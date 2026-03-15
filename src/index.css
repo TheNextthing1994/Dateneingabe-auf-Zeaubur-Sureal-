@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark: #0f172a;
+  --color-panel: #1e293b;
+  --color-primary: #10b981;
+  --color-accent: #8b5cf6;
+  --color-noise: #64748b;
+  
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-dark text-slate-50 antialiased;
+  }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes pulse-once {
+  0% { background-color: rgba(16, 185, 129, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 1s ease-out forwards;
+}
+
+.scanline {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.25) 50%
+  ),
+  linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.06),
+    rgba(0, 255, 0, 0.02),
+    rgba(0, 0, 255, 0.06)
+  );
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.terminal-text {
+  text-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+}
+
+.glitch-effect:hover {
+  text-shadow: 2px 0 0 #10b981, -2px 0 0 #8b5cf6;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

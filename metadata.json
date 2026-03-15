@@ -1,0 +1,5 @@
+{
+  "name": "D.T. DatenEingabe (mit Sureal verbunden)",
+  "description": "Ein Life Command Center zur Analyse und Filterung von Lebens-Inputs nach der G.C. Methode.",
+  "requestFramePermissions": []
+}
