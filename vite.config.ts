@@ -9,6 +9,11 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.VITE_SURREALDB_URL': JSON.stringify(env.VITE_SURREALDB_URL),
+      'process.env.VITE_SURREALDB_NS': JSON.stringify(env.VITE_SURREALDB_NS),
+      'process.env.VITE_SURREALDB_DB': JSON.stringify(env.VITE_SURREALDB_DB),
+      'process.env.VITE_SURREALDB_USER': JSON.stringify(env.VITE_SURREALDB_USER),
+      'process.env.VITE_SURREALDB_PASS': JSON.stringify(env.VITE_SURREALDB_PASS),
     },
     resolve: {
       alias: {

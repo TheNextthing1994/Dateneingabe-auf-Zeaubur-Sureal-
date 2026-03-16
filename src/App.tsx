@@ -77,6 +77,7 @@ interface LogEntry {
 
 interface AnalyzedItem {
   id: string;
+  rawId?: string;
   text: string;
   score: number;
   pillarId: string;
@@ -87,6 +88,7 @@ interface AnalyzedItem {
 
 interface MissionPlan {
   id: string;
+  rawId?: string;
   text: string;
   targetDate: string; // YYYY-MM-DD
   timestamp: number;
@@ -122,13 +124,14 @@ export default function App() {
   const [isMissionLocked, setIsMissionLocked] = useState(false);
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
-    url: '',
-    ns: 'test',
-    db: 'test',
-    user: '',
-    pass: ''
+    url: import.meta.env.VITE_SURREALDB_URL || (process.env as any).VITE_SURREALDB_URL || '',
+    ns: import.meta.env.VITE_SURREALDB_NS || (process.env as any).VITE_SURREALDB_NS || 'test',
+    db: import.meta.env.VITE_SURREALDB_DB || (process.env as any).VITE_SURREALDB_DB || 'test',
+    user: import.meta.env.VITE_SURREALDB_USER || (process.env as any).VITE_SURREALDB_USER || '',
+    pass: import.meta.env.VITE_SURREALDB_PASS || (process.env as any).VITE_SURREALDB_PASS || ''
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isConnectingRef = useRef(false);
 
   const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -203,14 +206,33 @@ export default function App() {
     }
   }, []);
 
-  const handleSurrealConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Auto-connect to SurrealDB if config is present
+  useEffect(() => {
+    if (surrealConfig.url && surrealStatus === 'disconnected' && !isConnectingRef.current) {
+      handleSurrealConnect();
+    }
+  }, [surrealConfig.url]);
+
+  const handleSurrealConnect = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (surrealStatus === 'connecting' || isConnectingRef.current) return;
+    
+    isConnectingRef.current = true;
     setSurrealStatus('connecting');
     console.log('Starting SurrealDB connection process with config:', surrealConfig);
     try {
+      const connId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setLogs(prev => [...prev, {
+        id: connId,
+        sender: 'System',
+        text: `Initialisiere Verbindung zu SurrealDB: ${surrealConfig.url}...`,
+        timestamp: Date.now()
+      }]);
+      
       const result = await surrealService.connect(surrealConfig);
       console.log('SurrealDB connect result:', result);
       setSurrealStatus('connected');
+      isConnectingRef.current = false;
       showNotification('Mit SurrealDB 3.0 verbunden!', 'success');
       setIsSurrealModalOpen(false);
       
@@ -226,36 +248,70 @@ export default function App() {
       setIsSyncing(true);
       try {
         const storedSeeds = await surrealService.getSeeds();
-        console.log('Stored seeds loaded:', storedSeeds?.length || 0);
-        if (storedSeeds && storedSeeds.length > 0) {
-          setAnalyzedItems(prev => {
-            const combined = [...storedSeeds, ...prev];
-            const unique = combined.filter((item, index, self) => 
-              index === self.findIndex((t) => t.id === item.id)
-            );
+        console.log('Stored seeds loaded from SurrealDB:', storedSeeds);
+        
+        // Always clear demo data if we are connected to SurrealDB
+        setAnalyzedItems(prev => {
+          const nonDemoPrev = prev.filter(item => !item.id.startsWith('demo-'));
+          
+          if (storedSeeds && storedSeeds.length > 0) {
+            const combined = [...storedSeeds, ...nonDemoPrev];
+            const unique = combined.filter((item, index, self) => {
+              const firstIndex = self.findIndex((t) => t.id === item.id);
+              return index === firstIndex;
+            });
+            console.log('Unique items after sync:', unique.length);
             return unique.sort((a, b) => b.timestamp - a.timestamp);
-          });
+          }
+          
+          return nonDemoPrev;
+        });
+
+        if (storedSeeds && storedSeeds.length > 0) {
+          setLogs(prev => [...prev, {
+            id: `sync_${Date.now()}`,
+            sender: 'System',
+            text: `${storedSeeds.length} Seeds erfolgreich aus SurrealDB synchronisiert.`,
+            timestamp: Date.now()
+          }]);
           
           setPillars(prev => {
             const newPillars = [...INITIAL_PILLARS];
             storedSeeds.forEach(item => {
               const pIndex = newPillars.findIndex(p => p.id === item.pillarId);
               if (pIndex !== -1) {
-                newPillars[pIndex].value = (newPillars[pIndex].value + (item.score * 10)) / 2;
+                // Simple moving average for pillar values based on scores
+                newPillars[pIndex].value = Math.round(Math.min(100, Math.max(0, (newPillars[pIndex].value + (item.score * 10)) / 2)));
               }
             });
             return newPillars;
           });
+        } else {
+          console.log('No seeds found in SurrealDB.');
         }
 
         // Load missions
         console.log('Loading missions...');
         const missions = await surrealService.getMissions();
         console.log('Missions loaded:', missions?.length || 0);
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayMission = missions.find(m => m.targetDate === todayStr);
-        if (todayMission) {
-          setTodaysMission(todayMission);
+        
+        if (missions && missions.length > 0) {
+          // Sort by timestamp to get the latest
+          const sortedMissions = [...missions].sort((a, b) => b.timestamp - a.timestamp);
+          const latestMission = sortedMissions[0];
+          
+          const todayStr = new Date().toISOString().split('T')[0];
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const tomorrowStr = tomorrow.toISOString().split('T')[0];
+          
+          // If the latest mission is for today or tomorrow, load it
+          if (latestMission.targetDate === todayStr || latestMission.targetDate === tomorrowStr) {
+            console.log('Syncing latest relevant mission:', latestMission);
+            setTodaysMission(latestMission);
+            setMissionInput(latestMission.text);
+            setIsMissionLocked(true);
+          }
         }
 
         showNotification('Daten aus SurrealDB synchronisiert.', 'info');
@@ -268,6 +324,7 @@ export default function App() {
     } catch (err) {
       console.error('SurrealDB Connection Error in App.tsx:', err);
       setSurrealStatus('disconnected');
+      isConnectingRef.current = false;
       showNotification('SurrealDB Verbindung fehlgeschlagen.', 'warn');
     }
   };
@@ -314,6 +371,46 @@ export default function App() {
 
   const handleUnlockMission = () => {
     setIsMissionLocked(false);
+  };
+
+  const handleDeleteSeed = async (item: AnalyzedItem) => {
+    try {
+      if (surrealStatus === 'connected' && item.rawId) {
+        await surrealService.deleteSeed(item.rawId);
+      }
+      
+      setAnalyzedItems(prev => prev.filter(i => i.id !== item.id));
+      showNotification('Seed erfolgreich gelöscht.', 'info');
+      
+      setLogs(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: 'System',
+        text: `Seed gelöscht: ${item.text.substring(0, 30)}...`,
+        timestamp: Date.now()
+      }]);
+    } catch (err) {
+      console.error('Delete Error:', err);
+      showNotification('Fehler beim Löschen des Seeds.', 'warn');
+    }
+  };
+
+  const handleDeleteMission = async () => {
+    if (!todaysMission) return;
+    
+    try {
+      if (surrealStatus === 'connected' && todaysMission.rawId) {
+        await surrealService.deleteMission(todaysMission.rawId);
+      }
+      
+      localStorage.removeItem('dt_mission_plan');
+      setTodaysMission(null);
+      setMissionInput('');
+      setIsMissionLocked(false);
+      showNotification('Mission gelöscht.', 'info');
+    } catch (err) {
+      console.error('Delete Mission Error:', err);
+      showNotification('Fehler beim Löschen der Mission.', 'warn');
+    }
   };
 
   const handleAnalyze = async () => {
@@ -583,102 +680,104 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-dark text-slate-50 font-sans">
       {/* Header */}
-      <header className="bg-panel border-b border-slate-700 p-4 flex justify-between items-center z-10 shadow-md">
-        <div className="flex items-center space-x-3">
-          <div className="text-2xl"><Brain className="w-8 h-8 text-primary" /></div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wider glitch-effect cursor-pointer">D.T. KERN-ANALYST</h1>
-            <div className="flex items-center space-x-4">
-              <p className="text-xs text-primary font-mono flex items-center">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse mr-2"></span>
-                System Online | n8n: <span className="text-slate-400 ml-1">Verbunden</span>
-              </p>
-              <button 
-                onClick={() => setIsSurrealModalOpen(true)}
-                className={cn(
-                  "text-[10px] font-mono flex items-center px-2 py-0.5 rounded border transition-all",
-                  surrealStatus === 'connected' 
-                    ? "bg-primary/10 border-primary text-primary" 
-                    : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500"
-                )}
-              >
-                {surrealStatus === 'connected' ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
-                SurrealDB: {surrealStatus === 'connected' ? (isSyncing ? 'Synchronisiere...' : 'Aktiv') : surrealStatus === 'connecting' ? 'Verbinde...' : 'Offline'}
-              </button>
+      <header className="sticky top-0 bg-panel/80 backdrop-blur-md border-b border-white/5 p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center z-50 shadow-sm gap-3 sm:gap-0">
+        <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
+          <div className="flex items-center space-x-3">
+            <div className="p-1.5 bg-primary/10 rounded-lg">
+              <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">D.T. KERN-ANALYST</h1>
+              <div className="flex items-center space-x-3">
+                <p className="text-[10px] text-primary/80 font-medium flex items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-1.5"></span>
+                  System Online
+                </p>
+                <button 
+                  onClick={() => setIsSurrealModalOpen(true)}
+                  className={cn(
+                    "text-[9px] font-medium flex items-center px-2 py-0.5 rounded-full border transition-all",
+                    surrealStatus === 'connected' 
+                      ? "bg-primary/10 border-primary/30 text-primary" 
+                      : "bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-800"
+                  )}
+                >
+                  {surrealStatus === 'connected' ? <Wifi className="w-2.5 h-2.5 mr-1" /> : <WifiOff className="w-2.5 h-2.5 mr-1" />}
+                  <span className="hidden xs:inline">SurrealDB: </span>{surrealStatus === 'connected' ? (isSyncing ? 'Sync' : 'Aktiv') : surrealStatus === 'connecting' ? 'Wait' : 'Off'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-        <div className="text-right hidden sm:block">
-          <p className="text-sm font-semibold text-slate-300">Ultimativer Filter:</p>
-          <p className="text-xs text-accent font-mono">Die Sirat-Brücke (7 Fragen)</p>
+        <div className="text-right hidden md:block">
+          <p className="text-xs font-medium text-slate-400">Ultimativer Filter:</p>
+          <p className="text-xs text-accent font-mono tracking-tighter">Die Sirat-Brücke (7 Fragen)</p>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         
         {/* Left Panel: Input */}
-        <section className="lg:w-1/3 bg-dark p-6 border-r border-slate-800 flex flex-col overflow-y-auto">
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-white mb-2 flex items-center border-b border-slate-700 pb-2">
-              <span className="mr-2">🌱</span> Input: Die Seed-Eingabe
-            </h2>
-            <p className="text-sm text-slate-400 mb-4 leading-relaxed">
-              Dies ist deine primäre Schnittstelle zum Digitalen Zwilling. Wirf hier alles hinein: YouTube-Links, lange Chat-Texte, flüchtige Gedanken.
+        <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
+              <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
+            </div>
+            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+              YouTube-Links, Chat-Texte oder flüchtige Gedanken – wirf alles in den Trichter.
             </p>
             
-            <div className="bg-panel p-4 rounded-lg border border-slate-700 shadow-inner">
-              <label className="block text-xs font-mono text-primary mb-2 uppercase tracking-tighter">NEUER_SEED_DETECTED &gt;</label>
+            <div className="bg-panel/40 backdrop-blur-sm p-4 rounded-2xl border border-white/5 shadow-sm">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Neuer Seed</label>
+                <span className="text-[10px] text-slate-500 font-mono">{seedInput.length} chars</span>
+              </div>
               <textarea 
                 value={seedInput}
                 onChange={(e) => setSeedInput(e.target.value)}
                 onKeyDown={(e) => e.ctrlKey && e.key === 'Enter' && handleAnalyze()}
-                rows={5} 
-                className="w-full bg-slate-900 text-white p-3 rounded border border-slate-600 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono text-sm resize-none" 
-                placeholder="Was beschäftigt dich gerade? YouTube-Link, Gedanke, Ziel..."
+                rows={4} 
+                className="w-full bg-black/20 text-white p-4 rounded-xl border border-white/5 focus:border-primary/50 focus:ring-0 outline-none transition-all text-sm resize-none placeholder:text-slate-700" 
+                placeholder="Was beschäftigt dich gerade?"
               />
               
-              <div className="mt-4 flex justify-between items-center">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-500 font-mono">{seedInput.length} Zeichen</span>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileUpload} 
-                    className="hidden" 
-                    accept=".txt,.log"
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isFileLoading || isAnalyzing}
-                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-600 transition-all flex items-center group"
-                    title="Lange Textdatei/Chat hochladen"
-                  >
-                    {isFileLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                    ) : (
-                      <FileText className="w-4 h-4 group-hover:text-primary transition-colors" />
-                    )}
-                    <span className="ml-2 text-xs hidden sm:inline">Chat/File</span>
-                  </button>
-                </div>
+              <div className="mt-4 flex items-center gap-3">
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isFileLoading || isAnalyzing}
+                  className="p-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl border border-white/5 transition-all flex items-center justify-center flex-1 sm:flex-none"
+                  title="Datei hochladen"
+                >
+                  {isFileLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  ) : (
+                    <FileText className="w-4 h-4" />
+                  )}
+                  <span className="ml-2 text-[11px] font-bold uppercase tracking-wider sm:hidden">File</span>
+                </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                  accept=".txt,.log"
+                />
                 <button 
                   onClick={handleAnalyze}
-                  disabled={isAnalyzing}
+                  disabled={isAnalyzing || !seedInput.trim()}
                   className={cn(
-                    "bg-primary hover:bg-emerald-600 text-white font-bold py-2 px-6 rounded transition-all shadow-lg shadow-emerald-900/50 flex items-center",
-                    isAnalyzing && "opacity-75 cursor-not-allowed"
+                    "flex-[2] sm:flex-1 bg-primary text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-primary/10 flex items-center justify-center active:scale-95",
+                    (isAnalyzing || !seedInput.trim()) && "opacity-50 cursor-not-allowed grayscale"
                   )}
                 >
                   {isAnalyzing ? (
-                    <>
-                      <Zap className="w-4 h-4 mr-2 animate-spin" />
-                      <span>Verarbeite...</span>
-                    </>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>Analysieren & Speichern</span>
-                      <Zap className="w-4 h-4 ml-2" />
+                      <span className="text-[11px] uppercase tracking-wider">Analysieren</span>
+                      <Zap className="w-3.5 h-3.5 ml-2" />
                     </>
                   )}
                 </button>
@@ -688,30 +787,43 @@ export default function App() {
 
           {/* Log */}
           <div className="flex-1 flex flex-col min-h-[200px]">
-            <h3 className="text-sm font-bold text-slate-300 mb-3 border-b border-slate-800 pb-1 flex items-center">
-              <History className="w-4 h-4 mr-2" /> Analysten-Log
-            </h3>
-            <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-4 pr-2 font-mono text-sm">
+            <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
+              <h3 className="text-sm font-bold text-slate-300 flex items-center">
+                <History className="w-4 h-4 mr-2 text-slate-500" /> Analysten-Log
+              </h3>
+              <span className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">Real-time</span>
+            </div>
+            <div ref={chatLogRef} className="flex-1 lg:overflow-y-auto space-y-3 pr-2 scrollbar-hide">
               <AnimatePresence initial={false}>
                 {logs.map((log) => (
                   <motion.div 
                     key={log.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
                     className={cn(
-                      "p-3 rounded border-l-2",
-                      log.sender === 'User' ? "bg-slate-800/30 border-slate-600" : "bg-slate-800/80 border-primary animate-pulse-once"
+                      "p-3 rounded-2xl border transition-all backdrop-blur-md",
+                      log.sender === 'User' 
+                        ? "bg-white/5 border-white/5 text-slate-300" 
+                        : "bg-primary/5 border-primary/20 text-slate-200"
                     )}
                   >
-                    <p className={cn("mb-1 font-bold text-xs", log.sender === 'User' ? "text-slate-400" : "text-primary")}>
-                      {log.sender}:
-                    </p>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider",
+                        log.sender === 'User' ? "text-slate-500" : "text-primary"
+                      )}>
+                        {log.sender}
+                      </span>
+                      <span className="text-[9px] text-slate-600 font-mono">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
                     {log.isCode ? (
-                      <pre className="text-xs text-slate-300 mt-2 bg-black/50 p-2 rounded overflow-x-auto border border-slate-700">
+                      <pre className="text-[11px] text-slate-300 mt-2 bg-black/40 p-3 rounded-xl border border-white/5 overflow-x-auto font-mono">
                         <code>{log.text}</code>
                       </pre>
                     ) : (
-                      <p className="text-slate-200 mt-1 whitespace-pre-wrap">{log.text}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{log.text}</p>
                     )}
                   </motion.div>
                 ))}
@@ -721,14 +833,14 @@ export default function App() {
         </section>
 
         {/* Right Panel: Dashboard */}
-        <section className="lg:w-2/3 bg-dark flex flex-col overflow-y-auto relative">
+        <section className="lg:w-2/3 bg-dark flex flex-col lg:overflow-y-auto relative">
           
           {/* Top Dashboard */}
-          <div className="p-6 border-b border-slate-800 bg-slate-900/50">
+          <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
               <div className="xl:col-span-2">
                 {/* Vaults Layer */}
-                <div className="mb-8">
+                <div className="mb-6 sm:mb-8">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center">
                       <Settings className="w-3 h-3 mr-2" /> Vault Selection / Filter
@@ -742,8 +854,8 @@ export default function App() {
                       </button>
                     )}
                   </div>
-                  <div className="overflow-x-auto pb-2">
-                    <div className="flex space-x-4 min-w-max">
+                  <div className="pb-2">
+                    <div className="grid grid-cols-3 sm:flex sm:flex-nowrap gap-3 sm:gap-4">
                       {VAULTS.map(vault => {
                         const count = analyzedItems.filter(i => i.vaultId === vault.id).length;
                         const isActive = selectedVaultId === vault.id;
@@ -754,7 +866,7 @@ export default function App() {
                             className="flex flex-col items-center group outline-none"
                           >
                             <div className={cn(
-                              "w-24 h-24 bg-panel rounded-xl border flex flex-col items-center justify-center relative transition-all duration-300",
+                              "w-full aspect-square sm:w-24 sm:h-24 bg-panel rounded-xl border flex flex-col items-center justify-center relative transition-all duration-300",
                               isActive 
                                 ? "border-primary shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-105" 
                                 : "border-slate-700 hover:border-slate-500"
@@ -777,7 +889,7 @@ export default function App() {
                               )}></div>
                             </div>
                             <span className={cn(
-                              "mt-2 text-[9px] font-mono uppercase tracking-widest border px-2 py-0.5 rounded transition-colors",
+                              "mt-2 text-[8px] sm:text-[9px] font-mono uppercase tracking-tighter sm:tracking-widest border px-1 sm:px-2 py-0.5 rounded transition-colors text-center w-full truncate block",
                               isActive 
                                 ? "border-primary/50 text-primary bg-primary/5" 
                                 : "border-slate-800 text-slate-500 group-hover:text-slate-400"
@@ -791,41 +903,44 @@ export default function App() {
                   </div>
                 </div>
 
-                <h2 className="text-lg font-bold text-white mb-2 flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-2 text-primary" /> Status & Säulen-Balance
-                </h2>
-                <p className="text-sm text-slate-400 mb-6 max-w-2xl">
-                  Hier siehst du die Verteilung deiner bisherigen "Seeds" und Aktivitäten auf deine 5 Kern-Prioritäten.
-                </p>
-
-                <div className="flex flex-col md:flex-row gap-8 items-center justify-center">
-                  <div className="w-full md:w-1/2 h-[300px] md:h-[350px]">
-                    <Radar data={chartData} options={chartOptions} />
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-white tracking-tight">📊 Status & Balance</h2>
+                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Live Metrics</span>
                   </div>
+                  <p className="text-sm text-slate-400 mb-8 max-w-2xl leading-relaxed">
+                    Verteilung deiner Seeds und Aktivitäten auf die 5 Kern-Prioritäten.
+                  </p>
 
-                  <div className="w-full md:w-1/2 space-y-4">
-                    <h3 className="text-sm font-bold text-slate-300 mb-2">Die 5 Säulen (Aktivität)</h3>
-                    <div className="space-y-3">
-                      {pillars.map(pillar => (
-                        <div key={pillar.id} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center space-x-2">
-                            <span>{pillar.icon}</span>
-                            <span className="text-slate-300">{pillar.name}</span>
-                          </div>
-                          <div className="flex-1 ml-4 mr-4">
-                            <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                  <div className="flex flex-col md:flex-row gap-10 items-center justify-center bg-panel/20 backdrop-blur-sm p-6 sm:p-8 rounded-3xl border border-white/5 shadow-sm">
+                    <div className="w-full md:w-1/2 h-[300px] md:h-[350px] flex items-center justify-center">
+                      <Radar data={chartData} options={chartOptions} />
+                    </div>
+
+                    <div className="w-full md:w-1/2 space-y-5">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Aktivitäts-Index</h3>
+                      <div className="space-y-4">
+                        {pillars.map(pillar => (
+                          <div key={pillar.id} className="space-y-2">
+                            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-tight">
+                              <div className="flex items-center space-x-2">
+                                <span>{pillar.icon}</span>
+                                <span className="text-slate-300">{pillar.name}</span>
+                              </div>
+                              <span className="text-slate-500 font-mono">{Math.round(pillar.value)}%</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                               <motion.div 
                                 initial={{ width: 0 }}
                                 animate={{ width: `${pillar.value}%` }}
-                                transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full rounded-full" 
+                                transition={{ duration: 1.2, ease: [0.23, 1, 0.32, 1] }}
+                                className="h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.2)]" 
                                 style={{ backgroundColor: pillar.color }}
                               />
                             </div>
                           </div>
-                          <span className="text-xs font-mono text-slate-400 w-8 text-right">{pillar.value}%</span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -834,47 +949,52 @@ export default function App() {
               {/* Mission Planning Card */}
               <div className="xl:col-span-1">
                 <section className={cn(
-                  "border rounded-2xl p-6 relative overflow-hidden group h-full flex flex-col transition-all duration-500",
+                  "border rounded-3xl p-6 sm:p-8 relative overflow-hidden group h-full flex flex-col transition-all duration-700",
                   isMissionLocked 
-                    ? "bg-emerald-950/20 border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.1)]" 
-                    : "bg-slate-900/40 border-slate-800/60"
+                    ? "bg-emerald-950/10 border-emerald-500/20 shadow-xl shadow-emerald-500/5" 
+                    : "bg-panel/20 backdrop-blur-sm border-white/5 shadow-sm"
                 )}>
-                  {isMissionLocked && <div className="scanline" />}
+                  {isMissionLocked && <div className="scanline opacity-20" />}
                   
-                  <div className="absolute top-0 right-0 p-4 z-10">
+                  <div className="absolute top-0 right-0 p-6 z-10">
                     <button 
                       onClick={handleUnlockMission}
                       className={cn(
-                        "p-2 rounded-lg transition-all",
-                        isMissionLocked ? "text-emerald-400 hover:bg-emerald-400/10" : "text-slate-500 hover:bg-slate-800"
+                        "p-2.5 rounded-xl transition-all active:scale-90",
+                        isMissionLocked ? "text-emerald-400 bg-emerald-400/10" : "text-slate-500 bg-white/5 hover:bg-white/10"
                       )}
                     >
                       {isMissionLocked ? <Lock className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
                     </button>
                   </div>
                   
-                  <div className="flex items-center space-x-3 mb-6 relative z-10">
-                    <Clock className={cn("w-5 h-5", isMissionLocked ? "text-emerald-400" : "text-sky-400")} />
+                  <div className="flex items-center space-x-4 mb-8 relative z-10">
+                    <div className={cn(
+                      "p-3 rounded-2xl",
+                      isMissionLocked ? "bg-emerald-400/10" : "bg-sky-400/10"
+                    )}>
+                      <Clock className={cn("w-5 h-5", isMissionLocked ? "text-emerald-400" : "text-sky-400")} />
+                    </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                      <h3 className="text-sm font-bold text-white tracking-tight uppercase">
                         {new Date().getHours() >= 5 && new Date().getHours() < 12 
-                          ? "GUTEN MORGEN, COMMANDER" 
-                          : "MISSION PLANNING"}
+                          ? "Guten Morgen" 
+                          : "Mission Planning"}
                       </h3>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-tighter">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                         {new Date().getHours() >= 5 && new Date().getHours() < 12 
-                          ? "IHRE BEFEHLE FÜR HEUTE." 
-                          : "DEFINIEREN SIE DIE PARAMETER FÜR MORGEN."}
+                          ? "Befehle für heute" 
+                          : "Parameter für morgen"}
                       </p>
                     </div>
                   </div>
 
                   {/* Status Indicator */}
                   {isMissionLocked && (
-                    <div className="mb-4 flex items-center space-x-2 relative z-10">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                      <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-[0.2em] animate-pulse">
-                        Status: Active Protocol
+                    <div className="mb-6 flex items-center space-x-2.5 relative z-10 bg-emerald-400/5 px-3 py-2 rounded-full w-fit">
+                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                      <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">
+                        Active Protocol
                       </span>
                     </div>
                   )}
@@ -903,7 +1023,14 @@ export default function App() {
                       )}
                       
                       {isMissionLocked && todaysMission && (
-                        <div className="absolute bottom-3 right-3">
+                        <div className="absolute bottom-3 right-3 flex items-center space-x-2">
+                          <button 
+                            onClick={handleDeleteMission}
+                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                            title="Mission löschen"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                           <div className="px-2 py-1 bg-emerald-900/40 border border-emerald-500/30 rounded text-[8px] text-emerald-400 uppercase tracking-widest font-mono">
                             Locked: {new Date(todaysMission.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
@@ -954,11 +1081,12 @@ export default function App() {
                     <span className="bg-primary text-slate-900 text-xs px-2 py-1 rounded-full font-bold">Fokus</span>
                   </h3>
                 </div>
-                <div className="p-3 space-y-3 overflow-y-auto flex-1">
+                <div className="p-3 space-y-3 lg:overflow-y-auto flex-1">
                   <AnimatePresence mode="popLayout">
-                    {filteredItems.filter(i => i.category === 'GAME CHANGER').map(item => (
-                      <BoardCard key={item.id} item={item} pillar={pillars.find(p => p.id === item.pillarId)!} />
-                    ))}
+                    {filteredItems.filter(i => i.category === 'GAME CHANGER').map(item => {
+                      const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                    })}
                   </AnimatePresence>
                 </div>
               </div>
@@ -971,11 +1099,12 @@ export default function App() {
                     <span className="text-xs text-slate-400">Inkrementell</span>
                   </h3>
                 </div>
-                <div className="p-3 space-y-3 overflow-y-auto flex-1">
+                <div className="p-3 space-y-3 lg:overflow-y-auto flex-1">
                   <AnimatePresence mode="popLayout">
-                    {filteredItems.filter(i => i.category === 'SOLID WORK').map(item => (
-                      <BoardCard key={item.id} item={item} pillar={pillars.find(p => p.id === item.pillarId)!} />
-                    ))}
+                    {filteredItems.filter(i => i.category === 'SOLID WORK').map(item => {
+                      const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                    })}
                   </AnimatePresence>
                 </div>
               </div>
@@ -988,11 +1117,12 @@ export default function App() {
                     <span className="text-xs text-noise">Ablenkung</span>
                   </h3>
                 </div>
-                <div className="p-3 space-y-3 overflow-y-auto flex-1">
+                <div className="p-3 space-y-3 lg:overflow-y-auto flex-1">
                   <AnimatePresence mode="popLayout">
-                    {filteredItems.filter(i => i.category === 'NOISE').map(item => (
-                      <BoardCard key={item.id} item={item} pillar={pillars.find(p => p.id === item.pillarId)!} />
-                    ))}
+                    {filteredItems.filter(i => i.category === 'NOISE').map(item => {
+                      const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                    })}
                   </AnimatePresence>
                 </div>
               </div>
@@ -1132,7 +1262,14 @@ export default function App() {
   );
 }
 
-function BoardCard({ item, pillar }: { item: AnalyzedItem; pillar: Pillar; key?: string }) {
+interface BoardCardProps {
+  item: AnalyzedItem;
+  pillar: Pillar;
+  onDelete: (item: AnalyzedItem) => void;
+  key?: string | number;
+}
+
+function BoardCard({ item, pillar, onDelete }: BoardCardProps) {
   const isNoise = item.category === 'NOISE';
   const isGC = item.category === 'GAME CHANGER';
   const vault = VAULTS.find(v => v.id === item.vaultId);
@@ -1140,48 +1277,59 @@ function BoardCard({ item, pillar }: { item: AnalyzedItem; pillar: Pillar; key?:
   return (
     <motion.div 
       layout
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.2 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
       className={cn(
-        "p-4 rounded-xl border transition-all relative overflow-hidden group",
-        isGC ? "bg-slate-800/80 border-primary/50 shadow-[0_4px_20px_rgba(16,185,129,0.1)] hover:border-primary text-white" : 
-        isNoise ? "bg-slate-900/50 border-slate-800 line-through text-slate-500 opacity-60" :
-        "bg-slate-800/40 border-slate-700 shadow-sm hover:border-slate-500 text-slate-200"
+        "p-4 rounded-2xl border transition-all relative overflow-hidden group backdrop-blur-md",
+        isGC ? "bg-slate-800/40 border-primary/20 shadow-lg shadow-primary/5 hover:border-primary/40 text-white" : 
+        isNoise ? "bg-slate-950/20 border-white/5 line-through text-slate-600 opacity-50" :
+        "bg-slate-900/30 border-white/5 shadow-sm hover:border-white/10 text-slate-200"
       )}
     >
       <div className={cn("flex justify-between items-start mb-3", isNoise && "opacity-50")}>
         <div className="flex flex-col space-y-1.5">
           <div className="flex items-center space-x-2">
             <span 
-              className="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wider uppercase"
-              style={{ color: pillar.color, backgroundColor: `${pillar.color}22`, border: `1px solid ${pillar.color}44` }}
+              className="px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase"
+              style={{ color: pillar.color, backgroundColor: `${pillar.color}15`, border: `1px solid ${pillar.color}30` }}
             >
               {pillar.name}
             </span>
             {vault && (
               <span 
-                className="text-[9px] font-mono uppercase tracking-tighter px-1.5 py-0.5 rounded-md border border-slate-700 bg-slate-900/50"
-                style={{ color: vault.color }}
+                className="text-[9px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-full border border-white/5 bg-white/5 text-slate-400"
               >
                 {vault.icon} {vault.name.split(' ')[0]}
               </span>
             )}
           </div>
         </div>
-        <div className={cn(
-          "px-2 py-1 rounded-lg text-xs font-black font-mono",
-          isGC ? "bg-primary text-slate-900 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-slate-700 text-slate-300"
-        )}>
-          {item.score.toFixed(1)}
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={() => onDelete(item)}
+            className="p-1 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+            title="Löschen"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+          <div className={cn(
+            "px-2 py-1 rounded-lg text-[10px] font-bold font-mono",
+            isGC ? "bg-primary text-slate-900" : "bg-white/5 text-slate-400"
+          )}>
+            {item.score.toFixed(1)}
+          </div>
         </div>
       </div>
-      <p className="text-sm leading-relaxed font-medium">{item.text}</p>
+      <p className="text-sm leading-relaxed font-medium tracking-tight">{item.text}</p>
       {isGC && (
-        <p className="text-xs text-primary mt-2 flex items-center">
-          <ArrowRight className="w-3 h-3 mr-1" /> Sirat-Impact geprüft. Action-Plan bereit.
-        </p>
+        <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+          <p className="text-[10px] text-primary font-bold uppercase tracking-wider flex items-center">
+            <ArrowRight className="w-3 h-3 mr-1" /> Action-Plan bereit
+          </p>
+          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+        </div>
       )}
     </motion.div>
   );
