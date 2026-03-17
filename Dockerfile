@@ -21,10 +21,12 @@ FROM nginx:alpine
 # Copy built files from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration template
+# The official nginx image will run envsubst on files in /etc/nginx/templates/*.template
+# and output the result to /etc/nginx/conf.d/*.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
-# Expose port 80
-EXPOSE 80
+# Default port if not provided by the environment
+ENV PORT=80
 
 CMD ["nginx", "-g", "daemon off;"]
