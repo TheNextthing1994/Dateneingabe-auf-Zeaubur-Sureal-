@@ -84,7 +84,7 @@ interface AnalyzedItem {
   text: string;
   score: number;
   pillarId: string;
-  vaultId: 'ideen' | 'projekte' | 'ziele' | 'workflows' | 'erkenntnisse' | 'toolbox';
+  vaultId: 'ideen' | 'projekte' | 'ziele' | 'workflows' | 'erkenntnisse' | 'toolbox' | 'kunden';
   category: 'GAME CHANGER' | 'SOLID WORK' | 'NOISE';
   timestamp: number;
 }
@@ -100,6 +100,7 @@ interface MissionPlan {
 const VAULTS = [
   { id: 'ideen', name: 'IDEEN DECK', icon: '💡', color: '#8b5cf6' },
   { id: 'projekte', name: 'PROJEKT AKTEN', icon: '📁', color: '#3b82f6' },
+  { id: 'kunden', name: 'KUNDEN ANFRAGEN', icon: '🤝', color: '#10b981' },
   { id: 'ziele', name: 'MISSIONS ZIELE', icon: '🎯', color: '#ef4444' },
   { id: 'workflows', name: 'STRATEGIEN / WORKFLOWS', icon: '⚙️', color: '#10b981' },
   { id: 'erkenntnisse', name: 'ERKENNTNISSE', icon: '🧠', color: '#f59e0b' },
@@ -109,7 +110,7 @@ const VAULTS = [
 const INITIAL_PILLARS: Pillar[] = [
   { id: 'health', name: 'Gesundheit', icon: '🌿', color: '#3b82f6' },
   { id: 'dev', name: 'Pers. Entwicklung', icon: '📚', color: '#f59e0b' },
-  { id: 'finance', name: 'Finanzen', icon: '💰', color: '#10b981' },
+  { id: 'finance', name: 'Business & Finanzen', icon: '💰', color: '#10b981' },
   { id: 'mindset', name: 'Mentalität', icon: '🧠', color: '#8b5cf6' },
   { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
 ];
@@ -489,57 +490,84 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
     }]);
     setSeedInput('');
 
-    // Simulate processing
-    setTimeout(() => {
-      let assignedPillar = pillars[Math.floor(Math.random() * pillars.length)];
-      let score = Math.random() * 9 + 1;
-      let vaultId: AnalyzedItem['vaultId'] = 'ideen';
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analysiere diesen "Seed" (Gedanke, Idee, Projekt, Kundenanfrage) und kategorisiere ihn.
+        
+        Seed: "${text}"
+        
+        Säulen (pillarId):
+        - health (Gesundheit)
+        - dev (Pers. Entwicklung)
+        - finance (Business & Finanzen)
+        - mindset (Mentalität)
+        - islam (Islam/Sirat)
+        
+        Vaults (vaultId):
+        - ideen: Neue Konzepte, Geistesblitze.
+        - projekte: Konkrete Vorhaben, komplexe Aufgaben.
+        - kunden: Kundenanfragen (Websites, Apps, AI Agents, Automatisierungen, Business-Deals).
+        - ziele: Langfristige Missionen.
+        - workflows: Strategien, Prozesse.
+        - erkenntnisse: Gelerntes, Aha-Momente.
+        - toolbox: Werkzeuge, Links.
+        
+        Impact-Score (1.0 bis 10.0):
+        - 8-10: GAME CHANGER (Hoher Hebel)
+        - 4-7: SOLID WORK (Wichtig, aber inkrementell)
+        - 1-3: NOISE (Ablenkung, geringer Wert)
+        
+        Gib das Ergebnis als JSON zurück.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING },
+              score: { type: Type.NUMBER },
+              pillarId: { type: Type.STRING },
+              vaultId: { type: Type.STRING },
+              category: { type: Type.STRING }
+            },
+            required: ["text", "score", "pillarId", "vaultId", "category"]
+          }
+        }
+      });
 
-      if (text.includes('http') || text.includes('youtube')) {
-        score = Math.random() * 4 + 4;
-        vaultId = 'toolbox';
-      }
-      if (text.length > 100) {
-        score = Math.random() * 3 + 7;
-        vaultId = 'projekte';
-      }
-      if (text.toLowerCase().includes('islam') || text.toLowerCase().includes('gebet')) {
-        score = Math.random() * 2 + 8;
-        assignedPillar = pillars.find(p => p.id === 'islam') || assignedPillar;
-        vaultId = 'ziele';
-      }
-      if (text.toLowerCase().includes('erkenntnis') || text.toLowerCase().includes('gelernt')) {
-        vaultId = 'erkenntnisse';
-      }
-      if (text.toLowerCase().includes('strategie') || text.toLowerCase().includes('plan')) {
-        vaultId = 'workflows';
-      }
-
-      const category: AnalyzedItem['category'] = score >= 8 ? "GAME CHANGER" : (score >= 4 ? "SOLID WORK" : "NOISE");
-
+      const result = JSON.parse(response.text || "{}");
+      
       const newItem: AnalyzedItem = {
         id: Date.now().toString(),
-        text,
-        score,
-        pillarId: assignedPillar.id,
-        vaultId,
-        category,
+        text: result.text || text,
+        score: result.score || 5,
+        pillarId: result.pillarId || 'dev',
+        vaultId: result.vaultId as any || 'ideen',
+        category: result.category as any || 'SOLID WORK',
         timestamp: Date.now()
       };
 
       setAnalyzedItems(prev => [newItem, ...prev]);
       
-      // Save to SurrealDB if connected
       if (surrealStatus === 'connected') {
-        surrealService.saveSeed(newItem).catch(err => {
-          console.error('SurrealDB Save Error:', err);
-          showNotification('Fehler beim Speichern in SurrealDB.', 'warn');
-        });
+        await surrealService.saveSeed(newItem);
       }
 
-      showNotification('Seed erfolgreich in SurrealDB gesichert.', 'success');
+      showNotification('Seed analysiert und gesichert.', 'success');
+      
+      setLogs(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'D.T. Kern',
+        text: `Analyse abgeschlossen: [${newItem.vaultId.toUpperCase()}] ${newItem.text} (Score: ${newItem.score.toFixed(1)}). Zugeordnet zu: ${pillars.find(p => p.id === newItem.pillarId)?.name || 'Unbekannt'}.`,
+        timestamp: Date.now()
+      }]);
+
+    } catch (err) {
+      console.error('Analysis Error:', err);
+      showNotification('Fehler bei der KI-Analyse.', 'warn');
+    } finally {
       setIsAnalyzing(false);
-    }, 1500);
+    }
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -575,12 +603,13 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           - text: Eine kurze, prägnante Zusammenfassung der Info.
           - score: Ein Impact-Score von 1.0 bis 10.0.
           - pillarId: Eine der IDs: health, dev, finance, mindset, islam.
-          - vaultId: Eine der IDs: ideen, projekte, ziele, workflows, erkenntnisse, toolbox.
+          - vaultId: Eine der IDs: ideen, projekte, kunden, ziele, workflows, erkenntnisse, toolbox.
           - category: Entweder "GAME CHANGER" (Score 8-10), "SOLID WORK" (4-7) oder "NOISE" (1-3).
           
           Vault-Logik (WICHTIG):
           - ideen: Neue Konzepte, Geistesblitze, kreative Ansätze.
           - projekte: Konkrete Vorhaben, komplexe Aufgabenpakete, laufende Projekte.
+          - kunden: Kundenanfragen, Business-Deals, Website/App/AI-Agent Anfragen, Automatisierungs-Wünsche.
           - ziele: Langfristige Missionen, Meilensteine, Visionen.
           - workflows: Strategien, Prozesse, n8n-Logik, Schritt-für-Schritt Anleitungen.
           - erkenntnisse: Gelerntes, Aha-Momente, tiefere Einsichten, Weisheiten.
@@ -740,7 +769,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Header */}
-      <header className="sticky top-0 bg-panel/80 backdrop-blur-md border-b border-white/5 p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center z-50 shadow-sm gap-3 sm:gap-0">
+      <header className="sticky top-0 bg-panel/80 backdrop-blur-md border-b border-white/5 p-4 sm:px-6 flex flex-col sm:flex-row justify-between items-center z-50 shadow-sm gap-3 sm:gap-0">
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
           <div className="flex items-center space-x-3">
             <div className="p-1.5 bg-primary/10 rounded-lg">
@@ -964,8 +993,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           
           {/* Top Dashboard */}
           <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-              <div className="xl:col-span-2">
+            <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8">
+              <div className="2xl:col-span-2 min-w-0">
                 {/* Vaults Layer */}
                 <div className="mb-6 sm:mb-8">
                   <div className="flex justify-between items-center mb-4">
@@ -991,8 +1020,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                       )}
                     </div>
                   </div>
-                  <div className="pb-2">
-                    <div className="grid grid-cols-3 sm:flex sm:flex-nowrap gap-3 sm:gap-4">
+                  <div className="pb-2 overflow-x-auto scrollbar-hide">
+                    <div className="grid grid-cols-4 sm:flex sm:flex-nowrap gap-2 sm:gap-4">
                       {VAULTS.map(vault => {
                         const count = analyzedItems.filter(i => i.vaultId === vault.id).length;
                         const isActive = selectedVaultId === vault.id;
@@ -1000,7 +1029,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                           <button 
                             key={vault.id} 
                             onClick={() => setSelectedVaultId(isActive ? null : vault.id)}
-                            className="flex flex-col items-center group outline-none"
+                            className="flex flex-col items-center group outline-none min-w-0 sm:w-24"
                           >
                             <div className={cn(
                               "w-full aspect-square sm:w-24 sm:h-24 bg-panel rounded-xl border flex flex-col items-center justify-center relative transition-all duration-300",
@@ -1026,7 +1055,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                               )}></div>
                             </div>
                             <span className={cn(
-                              "mt-2 text-[8px] sm:text-[9px] font-mono uppercase tracking-tighter sm:tracking-widest border px-1 sm:px-2 py-0.5 rounded transition-colors text-center w-full truncate block",
+                              "mt-2 text-[8px] sm:text-[9px] font-bold uppercase tracking-tighter sm:tracking-widest border px-1 sm:px-2 py-0.5 rounded transition-colors text-center w-full truncate block",
                               isActive 
                                 ? "border-primary/50 text-primary bg-primary/5" 
                                 : "border-slate-800 text-slate-500 group-hover:text-slate-400"
@@ -1049,12 +1078,12 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                     Verteilung deiner Seeds und Aktivitäten auf die 5 Kern-Prioritäten.
                   </p>
 
-                  <div className="flex flex-col md:flex-row gap-10 items-center justify-center bg-panel/20 backdrop-blur-sm p-6 sm:p-8 rounded-3xl border border-white/5 shadow-sm">
-                    <div className="w-full md:w-1/2 h-[300px] md:h-[350px] flex items-center justify-center">
+                  <div className="flex flex-col md:flex-row xl:flex-col 2xl:flex-row gap-6 md:gap-10 items-center justify-center bg-panel/20 backdrop-blur-sm p-4 sm:p-6 rounded-3xl border border-white/5 shadow-sm">
+                    <div className="w-full md:w-1/2 xl:w-full 2xl:w-1/2 h-[300px] md:h-[350px] flex items-center justify-center">
                       <Radar data={chartData} options={chartOptions} />
                     </div>
 
-                    <div className="w-full md:w-1/2 space-y-5">
+                    <div className="w-full md:w-1/2 xl:w-full 2xl:w-1/2 space-y-5">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Aktivitäts-Index</h3>
                       <div className="space-y-4">
                         {pillars.map(pillar => (
@@ -1084,9 +1113,9 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               </div>
 
               {/* Mission Planning Card */}
-              <div className="xl:col-span-1">
+              <div className="2xl:col-span-1">
                 <section className={cn(
-                  "border rounded-3xl p-6 sm:p-8 relative overflow-hidden group h-full flex flex-col transition-all duration-700",
+                  "border rounded-3xl p-4 sm:p-6 relative overflow-hidden group h-full flex flex-col transition-all duration-700",
                   isMissionLocked 
                     ? "bg-emerald-950/10 border-emerald-500/20 shadow-xl shadow-emerald-500/5" 
                     : "bg-panel/20 backdrop-blur-sm border-white/5 shadow-sm"
@@ -1201,7 +1230,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           </div>
 
           {/* Bottom Board */}
-          <div className="p-6 flex-1">
+          <div className="p-4 sm:p-6 flex-1">
             <h2 className="text-lg font-bold text-white mb-2 flex items-center">
               <Target className="w-5 h-5 mr-2 text-accent" /> Die G.C. Method (Impact-Filter)
             </h2>
