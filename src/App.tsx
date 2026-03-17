@@ -141,6 +141,7 @@ export default function App() {
   const isConnectingRef = useRef(false);
 
   useEffect(() => {
+    console.log('Gemini API Key status:', import.meta.env.VITE_GEMINI_API_KEY ? 'Defined' : 'Undefined');
     if (isDarkMode) {
       document.documentElement.classList.remove('light');
     } else {
@@ -148,7 +149,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
+  const ai = useMemo(() => new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' }), []);
   const [logs, setLogs] = useState<LogEntry[]>([
     {
       id: 'initial',
@@ -737,7 +738,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-dark text-slate-50 font-sans">
+    <div className="h-screen flex flex-col overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Header */}
       <header className="sticky top-0 bg-panel/80 backdrop-blur-md border-b border-white/5 p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center z-50 shadow-sm gap-3 sm:gap-0">
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
@@ -784,7 +785,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden overscroll-contain">
         
         {/* Left Panel: Input */}
         <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">

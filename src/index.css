@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+@layer base {
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    position: fixed;
+    background-color: #0A0A0A;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    touch-action: manipulation;
+    @apply bg-dark text-text-main antialiased transition-colors duration-300;
+  }
+}
+
 @theme {
   --color-dark: var(--bg-main);
   --color-panel: var(--bg-panel);
@@ -29,9 +47,7 @@
 }
 
 @layer base {
-  body {
-    @apply bg-dark text-text-main antialiased transition-colors duration-300;
-  }
+  /* Body styles moved to top layer base block */
 }
 
 /* Markdown Styling */
