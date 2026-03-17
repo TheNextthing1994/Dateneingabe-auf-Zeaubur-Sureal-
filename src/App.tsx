@@ -17,6 +17,7 @@ import {
 } from 'chart.js';
 import { Radar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import { GoogleGenAI, Type } from "@google/genai";
 import { surrealService, SurrealConfig } from './services/surrealService';
 import { 
@@ -39,7 +40,10 @@ import {
   X,
   Clock,
   Lock,
-  Send
+  Send,
+  Sun,
+  Moon,
+  Download
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -64,7 +68,6 @@ interface Pillar {
   name: string;
   icon: string;
   color: string;
-  value: number;
 }
 
 interface LogEntry {
@@ -104,17 +107,21 @@ const VAULTS = [
 ] as const;
 
 const INITIAL_PILLARS: Pillar[] = [
-  { id: 'health', name: 'Gesundheit', icon: '🌿', color: '#3b82f6', value: 65 },
-  { id: 'dev', name: 'Pers. Entwicklung', icon: '📚', color: '#f59e0b', value: 40 },
-  { id: 'finance', name: 'Finanzen', icon: '💰', color: '#10b981', value: 55 },
-  { id: 'mindset', name: 'Mentalität', icon: '🧠', color: '#8b5cf6', value: 70 },
-  { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308', value: 85 }
+  { id: 'health', name: 'Gesundheit', icon: '🌿', color: '#3b82f6' },
+  { id: 'dev', name: 'Pers. Entwicklung', icon: '📚', color: '#f59e0b' },
+  { id: 'finance', name: 'Finanzen', icon: '💰', color: '#10b981' },
+  { id: 'mindset', name: 'Mentalität', icon: '🧠', color: '#8b5cf6' },
+  { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
 ];
 
 export default function App() {
-  const [pillars, setPillars] = useState<Pillar[]>(INITIAL_PILLARS);
   const [seedInput, setSeedInput] = useState('');
+  const [chatInput, setChatInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isChatting, setIsChatting] = useState(false);
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
+  const [isLogCollapsed, setIsLogCollapsed] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSurrealModalOpen, setIsSurrealModalOpen] = useState(false);
@@ -133,44 +140,24 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isConnectingRef = useRef(false);
 
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+    }
+  }, [isDarkMode]);
+
   const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
   const [logs, setLogs] = useState<LogEntry[]>([
     {
       id: 'initial',
       sender: 'System',
-      text: 'Ich bin der Kern-Analyst deines Digitalen Zwillings. Ich warte auf deinen Input. Ich bewerte alles auf einer Skala von 1-10 und filtere nach den 5 Säulen.',
+      text: 'Bereit für deinen Input. Ich bewerte alles auf einer Skala von 1-10 und filtere nach den 5 Säulen.',
       timestamp: Date.now()
     }
   ]);
-  const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([
-    {
-      id: 'demo-1',
-      text: 'System für tägliche Routinen (Gebet + Studium) in n8n automatisieren.',
-      score: 9.5,
-      pillarId: 'islam',
-      vaultId: 'workflows',
-      category: 'GAME CHANGER',
-      timestamp: Date.now() - 100000
-    },
-    {
-      id: 'demo-2',
-      text: 'Neuen Trainingsplan in Excel formatieren und ausdrucken.',
-      score: 6.0,
-      pillarId: 'health',
-      vaultId: 'projekte',
-      category: 'SOLID WORK',
-      timestamp: Date.now() - 200000
-    },
-    {
-      id: 'demo-3',
-      text: '3 Stunden YouTube Shorts über "Hustle Culture" schauen.',
-      score: 2.0,
-      pillarId: 'mindset',
-      vaultId: 'erkenntnisse',
-      category: 'NOISE',
-      timestamp: Date.now() - 300000
-    }
-  ]);
+  const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<{ id: number; msg: string; type: 'success' | 'warn' | 'info' }[]>([]);
 
@@ -178,6 +165,15 @@ export default function App() {
     if (!selectedVaultId) return analyzedItems;
     return analyzedItems.filter(item => item.vaultId === selectedVaultId);
   }, [analyzedItems, selectedVaultId]);
+
+  const pillars = useMemo(() => {
+    return INITIAL_PILLARS.map(p => {
+      const items = analyzedItems.filter(item => item.pillarId === p.id);
+      // Calculate value based on total scores, capped at 100
+      const totalScore = items.reduce((acc, item) => acc + item.score, 0);
+      return { ...p, value: Math.min(100, totalScore) };
+    });
+  }, [analyzedItems]);
 
   const chatLogRef = useRef<HTMLDivElement>(null);
 
@@ -274,18 +270,6 @@ export default function App() {
             text: `${storedSeeds.length} Seeds erfolgreich aus SurrealDB synchronisiert.`,
             timestamp: Date.now()
           }]);
-          
-          setPillars(prev => {
-            const newPillars = [...INITIAL_PILLARS];
-            storedSeeds.forEach(item => {
-              const pIndex = newPillars.findIndex(p => p.id === item.pillarId);
-              if (pIndex !== -1) {
-                // Simple moving average for pillar values based on scores
-                newPillars[pIndex].value = Math.round(Math.min(100, Math.max(0, (newPillars[pIndex].value + (item.score * 10)) / 2)));
-              }
-            });
-            return newPillars;
-          });
         } else {
           console.log('No seeds found in SurrealDB.');
         }
@@ -371,6 +355,81 @@ export default function App() {
 
   const handleUnlockMission = () => {
     setIsMissionLocked(false);
+  };
+
+  const handleChatSubmit = async (e?: React.FormEvent, isDeep: boolean = false) => {
+    if (e) e.preventDefault();
+    const text = chatInput.trim();
+    if (!text || isChatting) return;
+
+    setIsChatting(true);
+    const userMsgId = Date.now().toString();
+    setLogs(prev => [...prev, {
+      id: userMsgId,
+      sender: 'User',
+      text,
+      timestamp: Date.now()
+    }]);
+    setChatInput('');
+
+    try {
+      // Fetch context from SurrealDB
+      let contextData = "";
+      if (surrealStatus === 'connected') {
+        const [seeds, missions] = await Promise.all([
+          surrealService.getSeeds(),
+          surrealService.getMissions()
+        ]);
+        
+        contextData = `
+Hier sind die aktuellen Daten aus deiner SurrealDB Datenbank:
+SEEDS (Gedanken, Ideen, Projekte):
+${seeds.map(s => `- [${s.category}] ${s.text} (Score: ${s.score}, Säule: ${s.pillarId}, Vault: ${s.vaultId})`).join('\n')}
+
+MISSIONEN (Geplante Aufgaben):
+${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
+`;
+      } else {
+        contextData = "Hinweis: SurrealDB ist aktuell nicht verbunden. Ich habe nur Zugriff auf die Demo-Daten.";
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Du bist D.T. Kern, der digitale Zwilling und Analyst des Nutzers. 
+        Deine Aufgabe ist es, den Nutzer basierend auf seinen Daten in SurrealDB zu beraten.
+        
+        KONTEXT AUS DER DATENBANK:
+        ${contextData}
+        
+        NUTZER-ANFRAGE:
+        ${text}`,
+        config: {
+          systemInstruction: isDeep 
+            ? "Antworte ausführlich, tiefgründig und analytisch. Gehe ins Detail, erstelle Pläne und analysiere Zusammenhänge zwischen den Seeds. Nutze die 5 Säulen als strategischen Kompass. WICHTIG: Verzichte auf Begrüßungen oder Vorstellungen deiner Identität (wie 'Ich bin D.T. Kern' oder 'dein digitaler Zwilling'), da der Nutzer dies bereits weiß. Steige direkt in die Analyse ein."
+            : "Antworte extrem kurz, gezielt und wie ein echter Gesprächspartner. Maximal 1-2 Sätze. Sei präzise und direkt.",
+        }
+      });
+
+      const aiText = response.text || "Ich konnte keine Antwort generieren.";
+      
+      setLogs(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'D.T. Kern',
+        text: aiText,
+        timestamp: Date.now()
+      }]);
+    } catch (err) {
+      console.error('Chat Error:', err);
+      showNotification('Fehler beim Chatten mit D.T. Kern.', 'warn');
+      setLogs(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'System',
+        text: 'Fehler bei der Kommunikation mit der KI.',
+        timestamp: Date.now()
+      }]);
+    } finally {
+      setIsChatting(false);
+    }
   };
 
   const handleDeleteSeed = async (item: AnalyzedItem) => {
@@ -476,37 +535,6 @@ export default function App() {
           showNotification('Fehler beim Speichern in SurrealDB.', 'warn');
         });
       }
-      
-      // Update pillars
-      setPillars(prev => prev.map(p => 
-        p.id === assignedPillar.id 
-          ? { ...p, value: Math.min(100, p.value + Math.floor(score)) }
-          : p
-      ));
-
-      setLogs(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'D.T. Kern',
-          text: `Analyse abgeschlossen. Daten an n8n & SurrealDB übergeben.\nGewählte Säule: ${assignedPillar.name} | Score: ${score.toFixed(1)}/10`,
-          timestamp: Date.now()
-        },
-        {
-          id: (Date.now() + 2).toString(),
-          sender: 'System',
-          isCode: true,
-          text: JSON.stringify({
-            id: `seed_${Date.now()}`,
-            action: "INSERT_SURREALDB",
-            pillar: assignedPillar.name,
-            impact_score: score.toFixed(1),
-            classification: category,
-            sirat_aligned: score >= 5
-          }, null, 2),
-          timestamp: Date.now()
-        }
-      ]);
 
       showNotification('Seed erfolgreich in SurrealDB gesichert.', 'success');
       setIsAnalyzing(false);
@@ -597,18 +625,6 @@ export default function App() {
             });
           }
           
-          // Update pillars based on extracted items
-          setPillars(prev => {
-            const newPillars = [...prev];
-            itemsWithIds.forEach(item => {
-              const pIndex = newPillars.findIndex(p => p.id === item.pillarId);
-              if (pIndex !== -1) {
-                newPillars[pIndex].value = Math.min(100, newPillars[pIndex].value + Math.floor(item.score / 2));
-              }
-            });
-            return newPillars;
-          });
-
           setLogs(prev => [...prev, {
             id: Date.now().toString(),
             sender: 'D.T. Kern',
@@ -628,6 +644,49 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleExportCSV = () => {
+    if (analyzedItems.length === 0) {
+      showNotification('Keine Daten zum Exportieren vorhanden.', 'info');
+      return;
+    }
+
+    const headers = ['Text', 'Score', 'Säule', 'Vault', 'Kategorie'];
+    const csvContent = [
+      headers.join(';'),
+      ...analyzedItems.map(item => {
+        const pillar = pillars.find(p => p.id === item.pillarId)?.name || item.pillarId;
+        const vault = VAULTS.find(v => v.id === item.vaultId)?.name || item.vaultId;
+        
+        const row = [
+          item.text,
+          item.score.toFixed(1).replace('.', ','), // Use comma for decimals in German Excel
+          pillar,
+          vault,
+          item.category
+        ];
+
+        return row.map(val => {
+          const str = String(val);
+          return `"${str.replace(/"/g, '""')}"`;
+        }).join(';');
+      })
+    ].join('\r\n');
+
+    // Add UTF-8 BOM for Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `dt_kern_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('CSV-Export für Excel optimiert.', 'success');
   };
 
   const chartData: ChartData<'radar'> = {
@@ -650,11 +709,11 @@ export default function App() {
     maintainAspectRatio: false,
     scales: {
       r: {
-        angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
-        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+        angleLines: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
+        grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
         pointLabels: {
           font: { size: 12 },
-          color: '#cbd5e1'
+          color: isDarkMode ? '#cbd5e1' : '#475569'
         },
         ticks: {
           display: false,
@@ -693,6 +752,15 @@ export default function App() {
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-1.5"></span>
                   System Online
                 </p>
+                <div className="h-3 w-[1px] bg-white/10"></div>
+                <button 
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-1.5 hover:bg-white/5 rounded-lg transition-all text-slate-400 hover:text-primary"
+                  title={isDarkMode ? "Hellmodus aktivieren" : "Dunkelmodus aktivieren"}
+                >
+                  {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                <div className="h-3 w-[1px] bg-white/10"></div>
                 <button 
                   onClick={() => setIsSurrealModalOpen(true)}
                   className={cn(
@@ -720,7 +788,7 @@ export default function App() {
         
         {/* Left Panel: Input */}
         <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">
-          <div className="mb-8">
+          <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-8")}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
               <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
@@ -785,17 +853,44 @@ export default function App() {
             </div>
           </div>
 
-          {/* Log */}
-          <div className="flex-1 flex flex-col min-h-[200px]">
+          {/* Log & Chat Area */}
+          <div className="flex-1 flex flex-col min-h-[100px] overflow-hidden">
             <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
               <h3 className="text-sm font-bold text-slate-300 flex items-center">
                 <History className="w-4 h-4 mr-2 text-slate-500" /> Analysten-Log
               </h3>
-              <span className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">Real-time</span>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setIsLogCollapsed(!isLogCollapsed)}
+                  className="text-[10px] font-bold text-slate-500 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 rounded-lg border border-white/5 transition-all"
+                >
+                  {isLogCollapsed ? "[ Log zeigen ]" : "[ Log einklappen ]"}
+                </button>
+                <button 
+                  onClick={() => setIsInputCollapsed(!isInputCollapsed)}
+                  className="text-[10px] font-bold text-primary/60 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 rounded-lg border border-white/5 transition-all"
+                >
+                  {isInputCollapsed ? "[ Seed-Eingabe öffnen ]" : "[ Einklappen ]"}
+                </button>
+              </div>
             </div>
-            <div ref={chatLogRef} className="flex-1 lg:overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+
+            {/* System Logs (Collapsible) */}
+            <div className={cn("space-y-2 mb-4 transition-all duration-500 overflow-hidden", isLogCollapsed ? "max-h-0 opacity-0" : "max-h-[120px] opacity-100 overflow-y-auto pr-2 scrollbar-hide")}>
+              {logs.filter(l => l.sender === 'System').map(log => (
+                <div key={log.id} className="text-[10px] text-slate-500 italic border-l border-white/10 pl-3 py-1 bg-white/[0.02] rounded-r-lg">
+                  <span className="text-[8px] text-slate-700 mr-2 font-mono">
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {log.text}
+                </div>
+              ))}
+            </div>
+
+            {/* Chat Messages (Flexible) */}
+            <div ref={chatLogRef} className="flex-1 lg:overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-4">
               <AnimatePresence initial={false}>
-                {logs.map((log) => (
+                {logs.filter(l => l.sender !== 'System').map((log) => (
                   <motion.div 
                     key={log.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -803,8 +898,8 @@ export default function App() {
                     className={cn(
                       "p-3 rounded-2xl border transition-all backdrop-blur-md",
                       log.sender === 'User' 
-                        ? "bg-white/5 border-white/5 text-slate-300" 
-                        : "bg-primary/5 border-primary/20 text-slate-200"
+                        ? "bg-white/5 border-white/5 text-slate-300 ml-4" 
+                        : "bg-primary/5 border-primary/20 text-slate-200 mr-4"
                     )}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -818,17 +913,48 @@ export default function App() {
                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    {log.isCode ? (
-                      <pre className="text-[11px] text-slate-300 mt-2 bg-black/40 p-3 rounded-xl border border-white/5 overflow-x-auto font-mono">
-                        <code>{log.text}</code>
-                      </pre>
-                    ) : (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{log.text}</p>
-                    )}
+                    <div className="markdown-body">
+                      <ReactMarkdown>{log.text}</ReactMarkdown>
+                    </div>
                   </motion.div>
                 ))}
               </AnimatePresence>
             </div>
+
+            {/* Chat Input */}
+            <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
+              <div className="relative flex-1">
+                <input 
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Frag deinen digitalen Zwilling..."
+                  disabled={isChatting}
+                  className="w-full bg-panel/40 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm focus:border-primary/50 outline-none transition-all placeholder:text-slate-600"
+                />
+                <button 
+                  type="submit"
+                  disabled={isChatting || !chatInput.trim()}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
+                >
+                  {isChatting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <button 
+                type="button"
+                onClick={() => handleChatSubmit(undefined, true)}
+                disabled={isChatting || !chatInput.trim()}
+                className="p-3 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl border border-accent/20 transition-all flex items-center justify-center group"
+                title="Tiefe Antwort anfordern"
+              >
+                <Zap className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Deep</span>
+              </button>
+            </form>
           </div>
         </section>
 
@@ -845,14 +971,24 @@ export default function App() {
                     <h3 className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center">
                       <Settings className="w-3 h-3 mr-2" /> Vault Selection / Filter
                     </h3>
-                    {selectedVaultId && (
+                    <div className="flex items-center gap-3">
                       <button 
-                        onClick={() => setSelectedVaultId(null)}
-                        className="text-[10px] text-primary hover:underline font-mono uppercase"
+                        onClick={handleExportCSV}
+                        className="text-[10px] text-slate-400 hover:text-primary font-mono uppercase flex items-center gap-1.5 transition-colors"
+                        title="Alle Daten als CSV exportieren"
                       >
-                        [ Reset Filter ]
+                        <Download className="w-3 h-3" />
+                        [ Export CSV ]
                       </button>
-                    )}
+                      {selectedVaultId && (
+                        <button 
+                          onClick={() => setSelectedVaultId(null)}
+                          className="text-[10px] text-primary hover:underline font-mono uppercase"
+                        >
+                          [ Reset Filter ]
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="pb-2">
                     <div className="grid grid-cols-3 sm:flex sm:flex-nowrap gap-3 sm:gap-4">
