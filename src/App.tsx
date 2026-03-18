@@ -40,10 +40,20 @@ import {
   X,
   Clock,
   Lock,
+  Trophy,
+  ArrowUpRight,
   Send,
   Sun,
   Moon,
-  Download
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  Eye,
+  EyeOff,
+  Copy
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -84,8 +94,11 @@ interface AnalyzedItem {
   text: string;
   score: number;
   pillarId: string;
-  vaultId: 'ideen' | 'projekte' | 'ziele' | 'workflows' | 'erkenntnisse' | 'toolbox' | 'kunden';
+  vaultId: 'ideen' | 'projekte' | 'ziele' | 'workflows' | 'erkenntnisse' | 'toolbox' | 'kunden' | 'academy';
   category: 'GAME CHANGER' | 'SOLID WORK' | 'NOISE';
+  reasoning?: string;
+  nextStep?: string;
+  status?: 'Offen' | 'In Arbeit' | 'Blockiert';
   timestamp: number;
 }
 
@@ -103,8 +116,15 @@ const VAULTS = [
   { id: 'kunden', name: 'KUNDEN ANFRAGEN', icon: '🤝', color: '#10b981' },
   { id: 'ziele', name: 'MISSIONS ZIELE', icon: '🎯', color: '#ef4444' },
   { id: 'workflows', name: 'STRATEGIEN / WORKFLOWS', icon: '⚙️', color: '#10b981' },
+  { id: 'academy', name: 'ACADEMY & SUBS', icon: '🎓', color: '#f59e0b' },
   { id: 'erkenntnisse', name: 'ERKENNTNISSE', icon: '🧠', color: '#f59e0b' },
   { id: 'toolbox', name: 'TOOLBOX', icon: '🧰', color: '#64748b' }
+] as const;
+
+const OPERATIVE_TILES = [
+  { id: 'offen', name: 'UNVERARBEITETE SEEDS', icon: '🌱', color: '#8b5cf6', status: 'Offen' },
+  { id: 'in_arbeit', name: 'AKTIVE MISSIONEN', icon: '🚀', color: '#3b82f6', status: 'In Arbeit' },
+  { id: 'blockiert', name: 'OFFENE BLOCKER', icon: '🛑', color: '#ef4444', status: 'Blockiert' }
 ] as const;
 
 const INITIAL_PILLARS: Pillar[] = [
@@ -130,6 +150,8 @@ export default function App() {
   const [todaysMission, setTodaysMission] = useState<MissionPlan | null>(null);
   const [isLoggingMission, setIsLoggingMission] = useState(false);
   const [isMissionLocked, setIsMissionLocked] = useState(false);
+  const [pinnedIntel, setPinnedIntel] = useState('');
+  const [pinnedBlocker, setPinnedBlocker] = useState('');
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
     url: import.meta.env.VITE_SURREALDB_URL || (process.env as any).VITE_SURREALDB_URL || '',
@@ -160,13 +182,36 @@ export default function App() {
     }
   ]);
   const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
-  const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
+  const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<{ id: number; msg: string; type: 'success' | 'warn' | 'info' }[]>([]);
 
   const filteredItems = useMemo(() => {
-    if (!selectedVaultId) return analyzedItems;
-    return analyzedItems.filter(item => item.vaultId === selectedVaultId);
-  }, [analyzedItems, selectedVaultId]);
+    if (!selectedFilterId) return analyzedItems;
+    const operativeTile = OPERATIVE_TILES.find(t => t.id === selectedFilterId);
+    if (operativeTile) {
+      return analyzedItems.filter(item => item.status === operativeTile.status);
+    }
+    return analyzedItems.filter(item => item.vaultId === selectedFilterId);
+  }, [analyzedItems, selectedFilterId]);
+
+  const topPriority = useMemo(() => {
+    if (analyzedItems.length === 0) return null;
+    return [...analyzedItems].sort((a, b) => b.score - a.score)[0];
+  }, [analyzedItems]);
+
+  const handleTakeToMission = (item: AnalyzedItem) => {
+    setMissionInput(item.text);
+    const newMission: MissionPlan = {
+      id: Date.now().toString(),
+      text: item.text,
+      targetDate: new Date().toISOString().split('T')[0],
+      timestamp: Date.now()
+    };
+    setTodaysMission(newMission);
+    setIsMissionLocked(true);
+    localStorage.setItem('dt_mission_plan', JSON.stringify(newMission));
+    showNotification('Seed in Mission übernommen!', 'success');
+  };
 
   const pillars = useMemo(() => {
     return INITIAL_PILLARS.map(p => {
@@ -202,6 +247,12 @@ export default function App() {
       setIsMissionLocked(true);
       setTodaysMission(parsed);
     }
+    
+    const savedIntel = localStorage.getItem('dt_pinned_intel');
+    if (savedIntel) setPinnedIntel(savedIntel);
+    
+    const savedBlocker = localStorage.getItem('dt_pinned_blocker');
+    if (savedBlocker) setPinnedBlocker(savedBlocker);
   }, []);
 
   // Auto-connect to SurrealDB if config is present
@@ -313,6 +364,12 @@ export default function App() {
       isConnectingRef.current = false;
       showNotification('SurrealDB Verbindung fehlgeschlagen.', 'warn');
     }
+  };
+
+  const handleSaveBillboard = () => {
+    localStorage.setItem('dt_pinned_intel', pinnedIntel);
+    localStorage.setItem('dt_pinned_blocker', pinnedBlocker);
+    showNotification('Billboard aktualisiert.', 'success');
   };
 
   const handleLogMission = async () => {
@@ -510,6 +567,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         - kunden: Kundenanfragen (Websites, Apps, AI Agents, Automatisierungen, Business-Deals).
         - ziele: Langfristige Missionen.
         - workflows: Strategien, Prozesse.
+        - academy: Weiterbildungen, Kurse, Abonnements, Logins, Credentials, Kosten für Bildung.
         - erkenntnisse: Gelerntes, Aha-Momente.
         - toolbox: Werkzeuge, Links.
         
@@ -517,6 +575,11 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         - 8-10: GAME CHANGER (Hoher Hebel)
         - 4-7: SOLID WORK (Wichtig, aber inkrementell)
         - 1-3: NOISE (Ablenkung, geringer Wert)
+        
+        Zusätzlich:
+        - reasoning: Warum ist dieser Seed ein Game Changer oder Solid Work? (1 Satz)
+        - nextStep: Was ist der nächste konkrete Schritt? (1 Satz)
+        - status: Standardmäßig "Offen".
         
         Gib das Ergebnis als JSON zurück.`,
         config: {
@@ -528,9 +591,12 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               score: { type: Type.NUMBER },
               pillarId: { type: Type.STRING },
               vaultId: { type: Type.STRING },
-              category: { type: Type.STRING }
+              category: { type: Type.STRING },
+              reasoning: { type: Type.STRING },
+              nextStep: { type: Type.STRING },
+              status: { type: Type.STRING, enum: ["Offen", "In Arbeit", "Blockiert"] }
             },
-            required: ["text", "score", "pillarId", "vaultId", "category"]
+            required: ["text", "score", "pillarId", "vaultId", "category", "reasoning", "nextStep", "status"]
           }
         }
       });
@@ -544,6 +610,9 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         pillarId: result.pillarId || 'dev',
         vaultId: result.vaultId as any || 'ideen',
         category: result.category as any || 'SOLID WORK',
+        reasoning: result.reasoning || '',
+        nextStep: result.nextStep || '',
+        status: result.status as any || 'Offen',
         timestamp: Date.now()
       };
 
@@ -603,7 +672,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           - text: Eine kurze, prägnante Zusammenfassung der Info.
           - score: Ein Impact-Score von 1.0 bis 10.0.
           - pillarId: Eine der IDs: health, dev, finance, mindset, islam.
-          - vaultId: Eine der IDs: ideen, projekte, kunden, ziele, workflows, erkenntnisse, toolbox.
+          - vaultId: Eine der IDs: ideen, projekte, kunden, ziele, workflows, academy, erkenntnisse, toolbox.
           - category: Entweder "GAME CHANGER" (Score 8-10), "SOLID WORK" (4-7) oder "NOISE" (1-3).
           
           Vault-Logik (WICHTIG):
@@ -612,6 +681,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           - kunden: Kundenanfragen, Business-Deals, Website/App/AI-Agent Anfragen, Automatisierungs-Wünsche.
           - ziele: Langfristige Missionen, Meilensteine, Visionen.
           - workflows: Strategien, Prozesse, n8n-Logik, Schritt-für-Schritt Anleitungen.
+          - academy: Weiterbildungen, Kurse, Abonnements, Logins, Credentials, Kosten für Bildung.
           - erkenntnisse: Gelerntes, Aha-Momente, tiefere Einsichten, Weisheiten.
           - toolbox: Werkzeuge, Links, Ressourcen, Snippets.
           
@@ -767,58 +837,54 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-      {/* Header */}
-      <header className="sticky top-0 bg-panel/80 backdrop-blur-md border-b border-white/5 p-4 sm:px-6 flex flex-col sm:flex-row justify-between items-center z-50 shadow-sm gap-3 sm:gap-0">
-        <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
-          <div className="flex items-center space-x-3">
-            <div className="p-1.5 bg-primary/10 rounded-lg">
-              <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">D.T. KERN-ANALYST</h1>
-              <div className="flex items-center space-x-3">
-                <p className="text-[10px] text-primary/80 font-medium flex items-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-1.5"></span>
-                  System Online
-                </p>
-                <div className="h-3 w-[1px] bg-white/10"></div>
-                <button 
-                  onClick={() => setIsDarkMode(!isDarkMode)}
-                  className="p-1.5 hover:bg-white/5 rounded-lg transition-all text-slate-400 hover:text-primary"
-                  title={isDarkMode ? "Hellmodus aktivieren" : "Dunkelmodus aktivieren"}
-                >
-                  {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-                <div className="h-3 w-[1px] bg-white/10"></div>
-                <button 
-                  onClick={() => setIsSurrealModalOpen(true)}
-                  className={cn(
-                    "text-[9px] font-medium flex items-center px-2 py-0.5 rounded-full border transition-all",
-                    surrealStatus === 'connected' 
-                      ? "bg-primary/10 border-primary/30 text-primary" 
-                      : "bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-800"
-                  )}
-                >
-                  {surrealStatus === 'connected' ? <Wifi className="w-2.5 h-2.5 mr-1" /> : <WifiOff className="w-2.5 h-2.5 mr-1" />}
-                  <span className="hidden xs:inline">SurrealDB: </span>{surrealStatus === 'connected' ? (isSyncing ? 'Sync' : 'Aktiv') : surrealStatus === 'connecting' ? 'Wait' : 'Off'}
-                </button>
+    <div className="h-screen flex flex-col lg:flex-row overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+      {/* Left Panel: Input & Status */}
+      <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">
+        {/* Branding & System Status (Integrated Header) */}
+        <div className="mb-8 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-xl border border-primary/20">
+                <Brain className="w-5 h-5 text-primary" />
               </div>
+              <h1 className="text-lg font-bold tracking-tighter text-white">D.T. KERN-ANALYST</h1>
+            </div>
+            <button 
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 hover:bg-white/5 rounded-xl transition-all text-slate-500 hover:text-primary border border-white/5"
+              title={isDarkMode ? "Hellmodus aktivieren" : "Dunkelmodus aktivieren"}
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+          </div>
+          
+          <div className="flex items-center justify-between px-3 py-2 bg-white/[0.02] rounded-xl border border-white/5">
+            <div className="flex items-center gap-4">
+              <p className="text-[10px] text-primary/80 font-bold uppercase tracking-widest flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-2"></span>
+                System Online
+              </p>
+              <div className="h-3 w-[1px] bg-white/10"></div>
+              <button 
+                onClick={() => setIsSurrealModalOpen(true)}
+                className={cn(
+                  "text-[9px] font-bold uppercase tracking-widest flex items-center px-2 py-0.5 rounded-full border transition-all",
+                  surrealStatus === 'connected' 
+                    ? "bg-primary/10 border-primary/30 text-primary" 
+                    : "bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-800"
+                )}
+              >
+                {surrealStatus === 'connected' ? <Wifi className="w-2.5 h-2.5 mr-1" /> : <WifiOff className="w-2.5 h-2.5 mr-1" />}
+                <span>SurrealDB: </span>{surrealStatus === 'connected' ? (isSyncing ? 'Sync' : 'Aktiv') : surrealStatus === 'connecting' ? 'Wait' : 'Off'}
+              </button>
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-[9px] text-accent font-mono tracking-tighter opacity-60">Die Sirat-Brücke</p>
             </div>
           </div>
         </div>
-        <div className="text-right hidden md:block">
-          <p className="text-xs font-medium text-slate-400">Ultimativer Filter:</p>
-          <p className="text-xs text-accent font-mono tracking-tighter">Die Sirat-Brücke (7 Fragen)</p>
-        </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden overscroll-contain">
-        
-        {/* Left Panel: Input */}
-        <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">
-          <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-8")}>
+        <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-8")}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
               <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
@@ -892,15 +958,19 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setIsLogCollapsed(!isLogCollapsed)}
-                  className="text-[10px] font-bold text-slate-500 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 rounded-lg border border-white/5 transition-all"
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-primary uppercase tracking-widest px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all active:scale-95"
+                  title={isLogCollapsed ? "Log zeigen" : "Log einklappen"}
                 >
-                  {isLogCollapsed ? "[ Log zeigen ]" : "[ Log einklappen ]"}
+                  {isLogCollapsed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <span className="hidden xs:inline">{isLogCollapsed ? "Zeigen" : "Einklappen"}</span>
                 </button>
                 <button 
                   onClick={() => setIsInputCollapsed(!isInputCollapsed)}
-                  className="text-[10px] font-bold text-primary/60 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 rounded-lg border border-white/5 transition-all"
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-primary/70 hover:text-primary uppercase tracking-widest px-3 py-2 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
+                  title={isInputCollapsed ? "Seed-Eingabe öffnen" : "Seed-Eingabe einklappen"}
                 >
-                  {isInputCollapsed ? "[ Seed-Eingabe öffnen ]" : "[ Einklappen ]"}
+                  {isInputCollapsed ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                  <span className="hidden xs:inline">{isInputCollapsed ? "Eingabe" : "Einklappen"}</span>
                 </button>
               </div>
             </div>
@@ -995,73 +1065,76 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">
             <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8">
               <div className="2xl:col-span-2 min-w-0">
-                {/* Vaults Layer */}
+                {/* Operative Dashboard */}
                 <div className="mb-6 sm:mb-8">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center">
-                      <Settings className="w-3 h-3 mr-2" /> Vault Selection / Filter
+                      <Settings className="w-3 h-3 mr-2" /> Operative Status
                     </h3>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button 
                         onClick={handleExportCSV}
-                        className="text-[10px] text-slate-400 hover:text-primary font-mono uppercase flex items-center gap-1.5 transition-colors"
+                        className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-primary font-bold uppercase tracking-widest px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all active:scale-95"
                         title="Alle Daten als CSV exportieren"
                       >
-                        <Download className="w-3 h-3" />
-                        [ Export CSV ]
+                        <Download className="w-3.5 h-3.5" />
+                        <span className="hidden xs:inline">Export</span>
                       </button>
-                      {selectedVaultId && (
+                      {selectedFilterId && (
                         <button 
-                          onClick={() => setSelectedVaultId(null)}
-                          className="text-[10px] text-primary hover:underline font-mono uppercase"
+                          onClick={() => setSelectedFilterId(null)}
+                          className="flex items-center gap-1.5 text-[10px] text-primary hover:text-primary/80 font-bold uppercase tracking-widest px-3 py-2 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
+                          title="Filter zurücksetzen"
                         >
-                          [ Reset Filter ]
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span className="hidden xs:inline">Reset</span>
                         </button>
                       )}
                     </div>
                   </div>
-                  <div className="pb-2 overflow-x-auto scrollbar-hide">
-                    <div className="grid grid-cols-4 sm:flex sm:flex-nowrap gap-2 sm:gap-4">
-                      {VAULTS.map(vault => {
-                        const count = analyzedItems.filter(i => i.vaultId === vault.id).length;
-                        const isActive = selectedVaultId === vault.id;
+                  <div className="pb-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {OPERATIVE_TILES.map(tile => {
+                        const count = analyzedItems.filter(i => i.status === tile.status).length;
+                        const isActive = selectedFilterId === tile.id;
                         return (
                           <button 
-                            key={vault.id} 
-                            onClick={() => setSelectedVaultId(isActive ? null : vault.id)}
-                            className="flex flex-col items-center group outline-none min-w-0 sm:w-24"
+                            key={tile.id} 
+                            onClick={() => setSelectedFilterId(isActive ? null : tile.id)}
+                            className="flex flex-col items-center group outline-none w-full"
                           >
                             <div className={cn(
-                              "w-full aspect-square sm:w-24 sm:h-24 bg-panel rounded-xl border flex flex-col items-center justify-center relative transition-all duration-300",
+                              "w-full bg-panel/30 backdrop-blur-md rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
                               isActive 
-                                ? "border-primary shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-105" 
-                                : "border-slate-700 hover:border-slate-500"
+                                ? "border-primary shadow-[0_0_20px_rgba(16,185,129,0.15)] scale-[1.02]" 
+                                : "border-white/5 hover:border-white/10"
                             )}>
-                              <span className={cn(
-                                "text-2xl mb-1 transition-transform duration-300",
-                                isActive ? "scale-110" : "group-hover:scale-110"
-                              )}>
-                                {vault.icon}
-                              </span>
-                              <span className={cn(
-                                "text-xl font-bold transition-colors",
-                                isActive ? "text-primary" : "text-white"
-                              )}>
-                                {count}
-                              </span>
+                              {/* Background Glow */}
+                              <div className="absolute -top-12 -right-12 w-24 h-24 bg-white/5 blur-3xl rounded-full"></div>
+                              
                               <div className={cn(
-                                "absolute bottom-2 w-8 h-0.5 transition-all duration-300",
-                                isActive ? "bg-primary w-12" : "bg-slate-600 group-hover:bg-slate-400"
-                              )}></div>
+                                "w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all duration-300",
+                                isActive ? "bg-primary/20 scale-110" : "bg-white/5 group-hover:scale-110"
+                              )}>
+                                {tile.icon}
+                              </div>
+                              
+                              <div className="text-left flex-1">
+                                <span className={cn(
+                                  "block text-[10px] font-bold uppercase tracking-[0.2em] mb-1 transition-colors",
+                                  isActive ? "text-primary" : "text-slate-500"
+                                )}>
+                                  {tile.name}
+                                </span>
+                                <span className="text-2xl font-black text-white">
+                                  {count}
+                                </span>
+                              </div>
+
+                              {isActive && (
+                                <div className="absolute bottom-0 left-0 h-1 bg-primary w-full"></div>
+                              )}
                             </div>
-                            <span className={cn(
-                              "mt-2 text-[8px] sm:text-[9px] font-bold uppercase tracking-tighter sm:tracking-widest border px-1 sm:px-2 py-0.5 rounded transition-colors text-center w-full truncate block",
-                              isActive 
-                                ? "border-primary/50 text-primary bg-primary/5" 
-                                : "border-slate-800 text-slate-500 group-hover:text-slate-400"
-                            )}>
-                              {vault.name}
-                            </span>
                           </button>
                         );
                       })}
@@ -1071,156 +1144,247 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
 
                 <div className="mb-8">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-white tracking-tight">📊 Status & Balance</h2>
-                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Live Metrics</span>
+                    <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-primary" />
+                      AKTIVE PRIORITÄT
+                    </h2>
+                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider animate-pulse">
+                      Top Game Changer
+                    </span>
                   </div>
-                  <p className="text-sm text-slate-400 mb-8 max-w-2xl leading-relaxed">
-                    Verteilung deiner Seeds und Aktivitäten auf die 5 Kern-Prioritäten.
-                  </p>
-
-                  <div className="flex flex-col md:flex-row xl:flex-col 2xl:flex-row gap-6 md:gap-10 items-center justify-center bg-panel/20 backdrop-blur-sm p-4 sm:p-6 rounded-3xl border border-white/5 shadow-sm">
-                    <div className="w-full md:w-1/2 xl:w-full 2xl:w-1/2 h-[300px] md:h-[350px] flex items-center justify-center">
-                      <Radar data={chartData} options={chartOptions} />
-                    </div>
-
-                    <div className="w-full md:w-1/2 xl:w-full 2xl:w-1/2 space-y-5">
-                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Aktivitäts-Index</h3>
-                      <div className="space-y-4">
-                        {pillars.map(pillar => (
-                          <div key={pillar.id} className="space-y-2">
-                            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-tight">
-                              <div className="flex items-center space-x-2">
-                                <span>{pillar.icon}</span>
-                                <span className="text-slate-300">{pillar.name}</span>
-                              </div>
-                              <span className="text-slate-500 font-mono">{Math.round(pillar.value)}%</span>
+                  
+                  {topPriority ? (
+                    <motion.div 
+                      layout
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-panel/30 backdrop-blur-md border border-primary/20 rounded-3xl p-6 sm:p-8 relative overflow-hidden group shadow-2xl shadow-primary/5"
+                    >
+                      {/* Background Glow */}
+                      <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 blur-[100px] rounded-full group-hover:bg-primary/20 transition-all duration-700"></div>
+                      
+                      <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
+                        <div className="flex-1 space-y-6">
+                          <div>
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em]">
+                                {VAULTS.find(v => v.id === topPriority.vaultId)?.name || 'UNBEKANNT'}
+                              </span>
+                              <div className="h-px flex-1 bg-white/5"></div>
                             </div>
-                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                              <motion.div 
-                                initial={{ width: 0 }}
-                                animate={{ width: `${pillar.value}%` }}
-                                transition={{ duration: 1.2, ease: [0.23, 1, 0.32, 1] }}
-                                className="h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.2)]" 
-                                style={{ backgroundColor: pillar.color }}
-                              />
+                            <h3 className="text-2xl sm:text-3xl font-bold text-white leading-tight">
+                              {topPriority.text}
+                            </h3>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <Brain className="w-3 h-3" /> Warum das jetzt?
+                              </p>
+                              <p className="text-sm text-slate-300 leading-relaxed italic">
+                                "{topPriority.reasoning || 'Dieser Seed hat das höchste Potenzial für signifikanten Fortschritt.'}"
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <Zap className="w-3 h-3" /> Nächster Schritt
+                              </p>
+                              <p className="text-sm text-white font-medium leading-relaxed">
+                                {topPriority.nextStep || 'Analysiere die nächsten Schritte zur Umsetzung.'}
+                              </p>
                             </div>
                           </div>
-                        ))}
+
+                          <div className="flex flex-wrap items-center gap-4 pt-4">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
+                              <div className={cn(
+                                "w-2 h-2 rounded-full",
+                                topPriority.status === 'In Arbeit' ? "bg-blue-500" : 
+                                topPriority.status === 'Blockiert' ? "bg-red-500" : "bg-emerald-500"
+                              )}></div>
+                              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                {topPriority.status || 'Offen'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
+                              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                {INITIAL_PILLARS.find(p => p.id === topPriority.pillarId)?.name || 'Allgemein'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="w-full md:w-auto flex flex-col items-center justify-center gap-4">
+                          <div className="relative">
+                            <svg className="w-32 h-32 transform -rotate-90">
+                              <circle
+                                cx="64"
+                                cy="64"
+                                r="58"
+                                stroke="currentColor"
+                                strokeWidth="8"
+                                fill="transparent"
+                                className="text-white/5"
+                              />
+                              <motion.circle
+                                cx="64"
+                                cy="64"
+                                r="58"
+                                stroke="currentColor"
+                                strokeWidth="8"
+                                fill="transparent"
+                                strokeDasharray={364.4}
+                                initial={{ strokeDashoffset: 364.4 }}
+                                animate={{ strokeDashoffset: 364.4 - (364.4 * topPriority.score) / 10 }}
+                                transition={{ duration: 1.5, ease: "easeOut" }}
+                                className="text-primary"
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="text-3xl font-bold text-white">{topPriority.score.toFixed(1)}</span>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Impact</span>
+                            </div>
+                          </div>
+
+                          <button 
+                            onClick={() => handleTakeToMission(topPriority)}
+                            className="w-full px-6 py-3 bg-primary text-dark font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 group/btn"
+                          >
+                            <span>Mission starten</span>
+                            <ArrowUpRight className="w-4 h-4 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
+                          </button>
+                        </div>
                       </div>
+                    </motion.div>
+                  ) : (
+                    <div className="bg-panel/20 backdrop-blur-sm border border-dashed border-white/10 rounded-3xl p-12 flex flex-col items-center justify-center text-center">
+                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                        <Target className="w-8 h-8 text-slate-600" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-400 mb-2">Keine aktive Priorität</h3>
+                      <p className="text-sm text-slate-500 max-w-xs">
+                        Analysiere neue Seeds, um den wichtigsten Game Changer für heute zu identifizieren.
+                      </p>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Mission Planning Card */}
+              {/* Mission Billboard */}
               <div className="2xl:col-span-1">
-                <section className={cn(
-                  "border rounded-3xl p-4 sm:p-6 relative overflow-hidden group h-full flex flex-col transition-all duration-700",
-                  isMissionLocked 
-                    ? "bg-emerald-950/10 border-emerald-500/20 shadow-xl shadow-emerald-500/5" 
-                    : "bg-panel/20 backdrop-blur-sm border-white/5 shadow-sm"
-                )}>
-                  {isMissionLocked && <div className="scanline opacity-20" />}
-                  
-                  <div className="absolute top-0 right-0 p-6 z-10">
-                    <button 
-                      onClick={handleUnlockMission}
-                      className={cn(
-                        "p-2.5 rounded-xl transition-all active:scale-90",
-                        isMissionLocked ? "text-emerald-400 bg-emerald-400/10" : "text-slate-500 bg-white/5 hover:bg-white/10"
-                      )}
-                    >
-                      {isMissionLocked ? <Lock className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  
-                  <div className="flex items-center space-x-4 mb-8 relative z-10">
-                    <div className={cn(
-                      "p-3 rounded-2xl",
-                      isMissionLocked ? "bg-emerald-400/10" : "bg-sky-400/10"
-                    )}>
-                      <Clock className={cn("w-5 h-5", isMissionLocked ? "text-emerald-400" : "text-sky-400")} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight uppercase">
-                        {new Date().getHours() >= 5 && new Date().getHours() < 12 
-                          ? "Guten Morgen" 
-                          : "Mission Planning"}
-                      </h3>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                        {new Date().getHours() >= 5 && new Date().getHours() < 12 
-                          ? "Befehle für heute" 
-                          : "Parameter für morgen"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Status Indicator */}
-                  {isMissionLocked && (
-                    <div className="mb-6 flex items-center space-x-2.5 relative z-10 bg-emerald-400/5 px-3 py-2 rounded-full w-fit">
-                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                      <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">
-                        Active Protocol
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="space-y-4 flex-1 flex flex-col relative z-10">
-                    <div className="relative flex-1">
-                      {isMissionLocked ? (
-                        <div className="w-full h-full min-h-[150px] bg-black/40 border border-emerald-500/20 rounded-xl p-4 text-xs text-emerald-300/90 font-mono leading-relaxed terminal-text whitespace-pre-wrap">
-                          {missionInput}
-                        </div>
-                      ) : (
-                        <textarea
-                          value={missionInput}
-                          onChange={(e) => setMissionInput(e.target.value)}
-                          placeholder="1. Wichtigstes To-Do...&#10;2. Optionales To-Do...&#10;3. Vorbereitung für..."
-                          className="w-full h-full min-h-[150px] bg-slate-950/50 border border-sky-500/30 rounded-xl p-4 text-xs text-slate-300 placeholder:text-slate-700 focus:outline-none focus:border-sky-500/60 transition-colors resize-none font-mono"
-                        />
-                      )}
-                      
-                      {!isMissionLocked && (
-                        <div className="absolute bottom-3 right-3">
-                          <div className="px-2 py-1 bg-slate-900/80 border border-slate-800 rounded text-[8px] text-slate-500 uppercase tracking-widest">
-                            Draft Mode
-                          </div>
-                        </div>
-                      )}
-                      
-                      {isMissionLocked && todaysMission && (
-                        <div className="absolute bottom-3 right-3 flex items-center space-x-2">
-                          <button 
-                            onClick={handleDeleteMission}
-                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-                            title="Mission löschen"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                          <div className="px-2 py-1 bg-emerald-900/40 border border-emerald-500/30 rounded text-[8px] text-emerald-400 uppercase tracking-widest font-mono">
-                            Locked: {new Date(todaysMission.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {!isMissionLocked && (
-                      <button
-                        onClick={handleLogMission}
-                        disabled={isLoggingMission || !missionInput.trim()}
+                <section className="bg-panel/40 backdrop-blur-xl border border-white/5 rounded-3xl p-6 sm:p-8 h-full flex flex-col relative overflow-hidden group">
+                  {/* Billboard Header */}
+                  <div className="flex items-center justify-between mb-8 relative z-10">
+                    <h2 className="text-2xl font-black text-white tracking-tighter flex items-center gap-2">
+                      <Database className="w-6 h-6 text-primary" />
+                      BILLBOARD
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={handleSaveBillboard}
+                        className="p-2 bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg transition-all"
+                        title="Speichern"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setIsMissionLocked(!isMissionLocked)}
                         className={cn(
-                          "w-full py-3 rounded-xl flex items-center justify-center space-x-2 text-[10px] font-bold uppercase tracking-widest transition-all duration-300",
-                          missionInput.trim() 
-                            ? "bg-sky-500/20 text-sky-400 border border-sky-500/30 hover:bg-sky-500/30" 
-                            : "bg-slate-800/50 text-slate-600 border border-slate-800 cursor-not-allowed"
+                          "p-2 rounded-lg transition-all active:scale-90",
+                          isMissionLocked ? "text-emerald-400 bg-emerald-400/10" : "text-slate-500 bg-white/5 hover:bg-white/10"
                         )}
                       >
-                        {isLoggingMission ? (
-                          <div className="w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Send className="w-3 h-3" />
+                        {isMissionLocked ? <Lock className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 flex-1 flex flex-col relative z-10">
+                    {/* Slot 1: Aktive Mission */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-primary uppercase tracking-[0.2em] flex items-center gap-2">
+                          <Target className="w-3 h-3" /> Aktive Mission
+                        </h3>
+                        {isMissionLocked && (
+                          <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">
+                            Locked
+                          </span>
                         )}
-                        <span>Mission Einloggen</span>
+                      </div>
+                      <div className="relative group/slot">
+                        {isMissionLocked ? (
+                          <div className="w-full min-h-[80px] bg-primary/5 border border-primary/20 rounded-2xl p-4 text-sm text-primary font-bold leading-relaxed shadow-lg shadow-primary/5">
+                            {missionInput || 'Keine aktive Mission.'}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={missionInput}
+                            onChange={(e) => setMissionInput(e.target.value)}
+                            placeholder="Was ist heute das Wichtigste?"
+                            className="w-full min-h-[80px] bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 transition-all resize-none font-medium"
+                          />
+                        )}
+                        {isMissionLocked && todaysMission && (
+                          <button 
+                            onClick={handleDeleteMission}
+                            className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Slot 2: Pinned Intel */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-sky-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Brain className="w-3 h-3" /> Pinned Intel
+                      </h3>
+                      <div className="relative">
+                        <textarea
+                          value={pinnedIntel}
+                          onChange={(e) => setPinnedIntel(e.target.value)}
+                          placeholder="Wichtiger Hinweis oder Erkenntnis..."
+                          className="w-full min-h-[80px] bg-sky-400/5 border border-sky-400/20 rounded-2xl p-4 text-sm text-sky-100 placeholder:text-sky-900/50 focus:outline-none focus:border-sky-400/50 transition-all resize-none font-medium"
+                        />
+                        <div className="absolute top-4 right-4 text-sky-400/30">
+                          <History className="w-4 h-4" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Slot 3: Blocker / Warnung */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-red-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <AlertCircle className="w-3 h-3" /> Blocker / Warnung
+                      </h3>
+                      <div className="relative">
+                        <textarea
+                          value={pinnedBlocker}
+                          onChange={(e) => setPinnedBlocker(e.target.value)}
+                          placeholder="Gefahren oder Hindernisse..."
+                          className="w-full min-h-[80px] bg-red-400/5 border border-red-400/20 rounded-2xl p-4 text-sm text-red-100 placeholder:text-red-900/50 focus:outline-none focus:border-red-400/50 transition-all resize-none font-medium"
+                        />
+                        <div className="absolute top-4 right-4 text-red-400/30">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {!isMissionLocked && missionInput.trim() && (
+                      <button
+                        onClick={handleLogMission}
+                        disabled={isLoggingMission}
+                        className="w-full py-4 bg-primary text-dark font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 mt-auto"
+                      >
+                        {isLoggingMission ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                        <span className="uppercase tracking-widest text-[11px]">Mission Einloggen</span>
                       </button>
                     )}
                   </div>
@@ -1231,12 +1395,30 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
 
           {/* Bottom Board */}
           <div className="p-4 sm:p-6 flex-1">
-            <h2 className="text-lg font-bold text-white mb-2 flex items-center">
-              <Target className="w-5 h-5 mr-2 text-accent" /> Die G.C. Method (Impact-Filter)
-            </h2>
-            <p className="text-sm text-slate-400 mb-6 max-w-3xl">
-              Konzentriere dich auf die Game Changer (8-10) für den 80/20-Fokus. Noise (1-3) wird automatisch als "erledigt/ignoriert" markiert.
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-white mb-1 flex items-center">
+                  <Target className="w-5 h-5 mr-2 text-accent" /> Die G.C. Method (Impact-Filter)
+                </h2>
+                <p className="text-xs text-slate-500 max-w-2xl">
+                  Konzentriere dich auf die Game Changer (8-10) für den 80/20-Fokus. Noise (1-3) wird automatisch als "erledigt/ignoriert" markiert.
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Vault:</span>
+                <select 
+                  value={VAULTS.some(v => v.id === selectedFilterId) ? selectedFilterId || "" : ""}
+                  onChange={(e) => setSelectedFilterId(e.target.value || null)}
+                  className="bg-panel border border-white/10 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-300 outline-none focus:border-primary/50 transition-all cursor-pointer uppercase tracking-wider"
+                >
+                  <option value="">Alle Vaults</option>
+                  {VAULTS.map(v => (
+                    <option key={v.id} value={v.id}>{v.icon} {v.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full pb-10">
               {/* Game Changers */}
@@ -1251,7 +1433,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'GAME CHANGER').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
                     })}
                   </AnimatePresence>
                 </div>
@@ -1269,7 +1451,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'SOLID WORK').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
                     })}
                   </AnimatePresence>
                 </div>
@@ -1287,7 +1469,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'NOISE').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} />;
+                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
                     })}
                   </AnimatePresence>
                 </div>
@@ -1423,19 +1605,19 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
             )}
           </AnimatePresence>
         </section>
-      </main>
-    </div>
-  );
+      </div>
+    );
 }
 
 interface BoardCardProps {
   item: AnalyzedItem;
   pillar: Pillar;
   onDelete: (item: AnalyzedItem) => void;
+  showNotification: (msg: string, type: 'success' | 'warn' | 'info') => void;
   key?: string | number;
 }
 
-function BoardCard({ item, pillar, onDelete }: BoardCardProps) {
+function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps) {
   const isNoise = item.category === 'NOISE';
   const isGC = item.category === 'GAME CHANGER';
   const vault = VAULTS.find(v => v.id === item.vaultId);
@@ -1474,6 +1656,16 @@ function BoardCard({ item, pillar, onDelete }: BoardCardProps) {
         </div>
         <div className="flex items-center space-x-2">
           <button 
+            onClick={() => {
+              navigator.clipboard.writeText(item.text);
+              showNotification('In die Zwischenablage kopiert', 'info');
+            }}
+            className="p-1 text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+            title="Kopieren"
+          >
+            <Copy className="w-3 h-3" />
+          </button>
+          <button 
             onClick={() => onDelete(item)}
             className="p-1 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
             title="Löschen"
@@ -1488,7 +1680,23 @@ function BoardCard({ item, pillar, onDelete }: BoardCardProps) {
           </div>
         </div>
       </div>
-      <p className="text-sm leading-relaxed font-medium tracking-tight">{item.text}</p>
+      <p className="text-sm leading-relaxed font-medium tracking-tight mb-2">{item.text}</p>
+      
+      {(item.reasoning || item.nextStep) && !isNoise && (
+        <div className="mt-2 space-y-1.5 border-t border-white/5 pt-2">
+          {item.reasoning && (
+            <p className="text-[10px] text-slate-400 italic leading-relaxed">
+              <span className="text-primary/60 mr-1">Why:</span> {item.reasoning}
+            </p>
+          )}
+          {item.nextStep && (
+            <p className="text-[10px] text-emerald-400/80 font-medium">
+              <span className="text-emerald-500 mr-1">Next:</span> {item.nextStep}
+            </p>
+          )}
+        </div>
+      )}
+
       {isGC && (
         <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
           <p className="text-[10px] text-primary font-bold uppercase tracking-wider flex items-center">
