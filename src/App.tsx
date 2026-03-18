@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { GoogleGenAI, Type } from "@google/genai";
 import { surrealService, SurrealConfig } from './services/surrealService';
+import { getEnv } from './env';
 import { 
   Brain, 
   Zap, 
@@ -154,17 +155,24 @@ export default function App() {
   const [pinnedBlocker, setPinnedBlocker] = useState('');
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
-    url: import.meta.env.VITE_SURREALDB_URL || (process.env as any).VITE_SURREALDB_URL || '',
-    ns: import.meta.env.VITE_SURREALDB_NS || (process.env as any).VITE_SURREALDB_NS || 'test',
-    db: import.meta.env.VITE_SURREALDB_DB || (process.env as any).VITE_SURREALDB_DB || 'test',
-    user: import.meta.env.VITE_SURREALDB_USER || (process.env as any).VITE_SURREALDB_USER || '',
-    pass: import.meta.env.VITE_SURREALDB_PASS || (process.env as any).VITE_SURREALDB_PASS || ''
+    url: getEnv('VITE_SURREALDB_URL'),
+    ns: getEnv('VITE_SURREALDB_NS', 'test'),
+    db: getEnv('VITE_SURREALDB_DB', 'test'),
+    user: getEnv('VITE_SURREALDB_USER'),
+    pass: getEnv('VITE_SURREALDB_PASS')
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isConnectingRef = useRef(false);
 
   useEffect(() => {
-    console.log('Gemini API Key status:', import.meta.env.VITE_GEMINI_API_KEY ? 'Defined' : 'Undefined');
+    console.log('--- Environment Debug ---');
+    console.log('window.ENV:', (window as any).ENV);
+    console.log('VITE_GEMINI_API_KEY from getEnv:', getEnv('VITE_GEMINI_API_KEY'));
+    console.log('VITE_SURREALDB_URL from getEnv:', getEnv('VITE_SURREALDB_URL'));
+    console.log('-------------------------');
+    
+    const keyStatus = getEnv('VITE_GEMINI_API_KEY') ? 'Defined' : 'Undefined';
+    console.log('Gemini API Key status:', keyStatus);
     if (isDarkMode) {
       document.documentElement.classList.remove('light');
     } else {
@@ -172,7 +180,6 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' }), []);
   const [logs, setLogs] = useState<LogEntry[]>([
     {
       id: 'initial',
@@ -432,6 +439,9 @@ export default function App() {
     setChatInput('');
 
     try {
+      const apiKey = getEnv('VITE_GEMINI_API_KEY');
+      const ai = new GoogleGenAI({ apiKey });
+      
       // Fetch context from SurrealDB
       let contextData = "";
       if (surrealStatus === 'connected') {
@@ -538,6 +548,19 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
       return;
     }
 
+    // Check for API Key
+    const apiKey = getEnv('VITE_GEMINI_API_KEY');
+    if (!apiKey) {
+      showNotification('Gemini API Key fehlt. Bitte VITE_GEMINI_API_KEY in den Umgebungsvariablen setzen.', 'warn');
+      setLogs(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: 'System',
+        text: 'FEHLER: Kein API Key gefunden. Wenn du auf Zeabur hostest, stelle sicher, dass die Variable VITE_GEMINI_API_KEY (mit VITE_ Präfix) gesetzt ist und die App danach neu gebaut wurde.',
+        timestamp: Date.now()
+      }]);
+      return;
+    }
+
     setIsAnalyzing(true);
     setLogs(prev => [...prev, {
       id: Date.now().toString(),
@@ -548,6 +571,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
     setSeedInput('');
 
     try {
+      const apiKey = getEnv('VITE_GEMINI_API_KEY');
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Analysiere diesen "Seed" (Gedanke, Idee, Projekt, Kundenanfrage) und kategorisiere ihn.
@@ -591,7 +616,11 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               score: { type: Type.NUMBER },
               pillarId: { type: Type.STRING },
               vaultId: { type: Type.STRING },
-              category: { type: Type.STRING },
+              category: { 
+                type: Type.STRING, 
+                enum: ["GAME CHANGER", "SOLID WORK", "NOISE"],
+                description: "Die Kategorie basierend auf dem Score (8-10: GAME CHANGER, 4-7: SOLID WORK, 1-3: NOISE)"
+              },
               reasoning: { type: Type.STRING },
               nextStep: { type: Type.STRING },
               status: { type: Type.STRING, enum: ["Offen", "In Arbeit", "Blockiert"] }
@@ -601,15 +630,29 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      if (!response.text) {
+        throw new Error('Die KI hat keine Text-Antwort geliefert. Möglicherweise wurde die Anfrage durch Sicherheitsfilter blockiert oder der API-Key ist ungültig.');
+      }
+
+      const result = JSON.parse(response.text);
       
+      // Fallback logic for category based on score if AI returns something else
+      let finalCategory: 'GAME CHANGER' | 'SOLID WORK' | 'NOISE' = result.category as any;
+      const score = result.score || 5;
+      
+      if (!['GAME CHANGER', 'SOLID WORK', 'NOISE'].includes(finalCategory)) {
+        if (score >= 8) finalCategory = 'GAME CHANGER';
+        else if (score >= 4) finalCategory = 'SOLID WORK';
+        else finalCategory = 'NOISE';
+      }
+
       const newItem: AnalyzedItem = {
         id: Date.now().toString(),
         text: result.text || text,
-        score: result.score || 5,
+        score: score,
         pillarId: result.pillarId || 'dev',
         vaultId: result.vaultId as any || 'ideen',
-        category: result.category as any || 'SOLID WORK',
+        category: finalCategory,
         reasoning: result.reasoning || '',
         nextStep: result.nextStep || '',
         status: result.status as any || 'Offen',
@@ -653,6 +696,20 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
     reader.onload = async (e) => {
       const content = e.target?.result as string;
       if (!content) {
+        setIsFileLoading(false);
+        return;
+      }
+
+      // Check for API Key
+      const apiKey = getEnv('VITE_GEMINI_API_KEY');
+      if (!apiKey) {
+        showNotification('Gemini API Key fehlt.', 'warn');
+        setLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'System',
+          text: 'FEHLER: Datei-Analyse nicht möglich, da kein API Key gefunden wurde (VITE_GEMINI_API_KEY erforderlich).',
+          timestamp: Date.now()
+        }]);
         setIsFileLoading(false);
         return;
       }
@@ -837,9 +894,9 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
   };
 
   return (
-    <div className="h-screen flex flex-col lg:flex-row overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="min-h-screen lg:h-screen flex flex-col lg:flex-row lg:overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Left Panel: Input & Status */}
-      <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col lg:overflow-y-auto">
+      <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col overflow-y-auto lg:h-full">
         {/* Branding & System Status (Integrated Header) */}
         <div className="mb-8 flex flex-col gap-4">
           <div className="flex items-center justify-between">
@@ -950,7 +1007,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           </div>
 
           {/* Log & Chat Area */}
-          <div className="flex-1 flex flex-col min-h-[100px] overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-[100px] lg:overflow-hidden">
             <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
               <h3 className="text-sm font-bold text-slate-300 flex items-center">
                 <History className="w-4 h-4 mr-2 text-slate-500" /> Analysten-Log
@@ -988,7 +1045,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
             </div>
 
             {/* Chat Messages (Flexible) */}
-            <div ref={chatLogRef} className="flex-1 lg:overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-4">
+            <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-4 min-h-[200px] lg:min-h-0">
               <AnimatePresence initial={false}>
                 {logs.filter(l => l.sender !== 'System').map((log) => (
                   <motion.div 
@@ -1059,7 +1116,7 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         </section>
 
         {/* Right Panel: Dashboard */}
-        <section className="lg:w-2/3 bg-dark flex flex-col lg:overflow-y-auto relative">
+        <section className="lg:w-2/3 bg-dark flex flex-col overflow-y-auto relative lg:h-full">
           
           {/* Top Dashboard */}
           <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">

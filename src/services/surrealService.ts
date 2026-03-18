@@ -116,9 +116,17 @@ class SurrealService {
       
       return records.map(item => {
         const fullId = item.id.toString();
-        // Use the part after colon as the display ID if needed, 
-        // but for React keys and internal tracking, the full ID is safer.
-        return { ...item, id: fullId, rawId: fullId };
+        
+        // Ensure category is valid for UI columns
+        let category = item.category;
+        const score = item.score || 5;
+        if (!['GAME CHANGER', 'SOLID WORK', 'NOISE'].includes(category)) {
+          if (score >= 8) category = 'GAME CHANGER';
+          else if (score >= 4) category = 'SOLID WORK';
+          else category = 'NOISE';
+        }
+
+        return { ...item, id: fullId, rawId: fullId, category };
       }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     } catch (err: any) {
       console.error('Error in getSeeds:', err);

@@ -2,10 +2,8 @@
 
 @layer base {
   html, body, #root {
-    height: 100%;
+    min-height: 100%;
     width: 100%;
-    overflow: hidden;
-    position: fixed;
     background-color: #0A0A0A;
   }
 

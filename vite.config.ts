@@ -43,13 +43,12 @@ export default defineConfig(({ mode }) => {
       })
     ],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.VITE_SURREALDB_URL': JSON.stringify(env.VITE_SURREALDB_URL),
-      'process.env.VITE_SURREALDB_NS': JSON.stringify(env.VITE_SURREALDB_NS),
-      'process.env.VITE_SURREALDB_DB': JSON.stringify(env.VITE_SURREALDB_DB),
-      'process.env.VITE_SURREALDB_USER': JSON.stringify(env.VITE_SURREALDB_USER),
-      'process.env.VITE_SURREALDB_PASS': JSON.stringify(env.VITE_SURREALDB_PASS),
+      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || ""),
+      'import.meta.env.VITE_SURREALDB_URL': JSON.stringify(env.VITE_SURREALDB_URL || ""),
+      'import.meta.env.VITE_SURREALDB_NS': JSON.stringify(env.VITE_SURREALDB_NS || "test"),
+      'import.meta.env.VITE_SURREALDB_DB': JSON.stringify(env.VITE_SURREALDB_DB || "test"),
+      'import.meta.env.VITE_SURREALDB_USER': JSON.stringify(env.VITE_SURREALDB_USER || ""),
+      'import.meta.env.VITE_SURREALDB_PASS': JSON.stringify(env.VITE_SURREALDB_PASS || ""),
     },
     resolve: {
       alias: {

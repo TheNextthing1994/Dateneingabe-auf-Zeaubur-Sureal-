@@ -22,11 +22,13 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration template
-# The official nginx image will run envsubst on files in /etc/nginx/templates/*.template
-# and output the result to /etc/nginx/conf.d/*.conf
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Copy entrypoint script
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Default port if not provided by the environment
 ENV PORT=80
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]
