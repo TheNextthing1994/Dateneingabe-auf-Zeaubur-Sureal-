@@ -12,6 +12,3 @@ window.ENV = {
   VITE_SURREALDB_PASS: "${VITE_SURREALDB_PASS:-${SURREALDB_PASS}}"
 };
 EOF
-
-# Start nginx
-nginx -g "daemon off;"
