@@ -1,6 +1,10 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="112" fill="#0A0A0A"/>
-  <circle cx="256" cy="256" r="160" stroke="#10B981" stroke-width="24"/>
-  <circle cx="256" cy="256" r="80" fill="#10B981"/>
-  <path d="M256 140V180M256 332V372M140 256H180M332 256H372" stroke="#10B981" stroke-width="12" stroke-linecap="round"/>
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'>
+  <rect width='180' height='180' rx='40' fill='#0A0A0A'/>
+  <rect x='20' y='20' width='140' height='140' rx='30' fill='#10b981' fill-opacity='0.1' stroke='#10b981' stroke-opacity='0.2' stroke-width='4'/>
+  <g transform='translate(45, 45) scale(3.75)'>
+    <path d='M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 5.886 3 3 0 1 0 5.202 2.519 3 3 0 1 0 5.601 0 3 3 0 1 0 5.202-2.519 4 4 0 0 0 .52-5.886 4 4 0 0 0-2.526-5.77A3 3 0 1 0 12 5Z' fill='none' stroke='#10b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/>
+    <path d='M9 13a4.5 4.5 0 0 0 3-4' fill='none' stroke='#10b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/>
+    <path d='M15 13a4.5 4.5 0 0 1-3-4' fill='none' stroke='#10b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/>
+    <path d='M12 13V8' fill='none' stroke='#10b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/>
+  </g>
 </svg>

@@ -54,7 +54,10 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
-  Copy
+  Copy,
+  ShieldAlert,
+  Layers,
+  AlertTriangle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -100,6 +103,10 @@ interface AnalyzedItem {
   reasoning?: string;
   nextStep?: string;
   status?: 'Offen' | 'In Arbeit' | 'Blockiert';
+  duration?: string;
+  blockedBy?: string;
+  missionType?: 'Bauen' | 'Denken' | 'Planen' | 'Entscheiden' | 'Dokumentieren';
+  consequence?: string;
   timestamp: number;
 }
 
@@ -142,7 +149,8 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isInputCollapsed, setIsInputCollapsed] = useState(false);
-  const [isLogCollapsed, setIsLogCollapsed] = useState(false);
+  const [isLogCollapsed, setIsLogCollapsed] = useState(true);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -612,6 +620,10 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         - reasoning: Warum ist dieser Seed ein Game Changer oder Solid Work? (1 Satz)
         - nextStep: Was ist der nächste konkrete Schritt? (1 Satz)
         - status: Standardmäßig "Offen".
+        - duration: Geschätzter Zeitbedarf (z.B. "15 Min", "45 Min", "2h").
+        - blockedBy: Was blockiert diesen Seed aktuell? (Falls nichts, "Keine").
+        - missionType: Einer der folgenden Typen: "Bauen", "Denken", "Planen", "Entscheiden", "Dokumentieren".
+        - consequence: Was passiert, wenn man diesen Seed ignoriert? (1 kurzer Satz).
         
         Gib das Ergebnis als JSON zurück.`,
         config: {
@@ -630,9 +642,13 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               },
               reasoning: { type: Type.STRING },
               nextStep: { type: Type.STRING },
-              status: { type: Type.STRING, enum: ["Offen", "In Arbeit", "Blockiert"] }
+              status: { type: Type.STRING, enum: ["Offen", "In Arbeit", "Blockiert"] },
+              duration: { type: Type.STRING },
+              blockedBy: { type: Type.STRING },
+              missionType: { type: Type.STRING, enum: ["Bauen", "Denken", "Planen", "Entscheiden", "Dokumentieren"] },
+              consequence: { type: Type.STRING }
             },
-            required: ["text", "score", "pillarId", "vaultId", "category", "reasoning", "nextStep", "status"]
+            required: ["text", "score", "pillarId", "vaultId", "category", "reasoning", "nextStep", "status", "duration", "blockedBy", "missionType", "consequence"]
           }
         }
       });
@@ -663,6 +679,10 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         reasoning: result.reasoning || '',
         nextStep: result.nextStep || '',
         status: result.status as any || 'Offen',
+        duration: result.duration || 'Unbekannt',
+        blockedBy: result.blockedBy || 'Keine',
+        missionType: result.missionType as any || 'Bauen',
+        consequence: result.consequence || '',
         timestamp: Date.now()
       };
 
@@ -720,6 +740,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         setIsFileLoading(false);
         return;
       }
+
+      const ai = new GoogleGenAI({ apiKey });
 
       setLogs(prev => [...prev, {
         id: Date.now().toString(),
@@ -902,10 +924,20 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col lg:flex-row lg:overflow-hidden bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+      {/* Floating Action Button for Mobile (Back to Top) */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-50">
+        <button 
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="p-3 bg-primary text-slate-900 rounded-2xl shadow-2xl shadow-primary/40 active:scale-90 transition-all border border-primary/20"
+        >
+          <Brain className="w-6 h-6" />
+        </button>
+      </div>
+
       {/* Left Panel: Input & Status */}
-      <section className="lg:w-1/3 bg-dark p-4 sm:p-6 border-r border-white/5 flex flex-col overflow-y-auto lg:h-full">
+      <section className="lg:w-1/3 bg-dark p-4 sm:p-5 border-r border-white/5 flex flex-col overflow-y-auto lg:h-full">
         {/* Branding & System Status (Integrated Header) */}
-        <div className="mb-8 flex flex-col gap-4">
+        <div className="mb-6 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-xl border border-primary/20">
@@ -948,12 +980,12 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           </div>
         </div>
 
-        <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-8")}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
-              <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
+        <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-6")}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
+              <span className="px-2 py-0.5 bg-primary/10 text-primary text-[9px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
             </div>
-            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
               YouTube-Links, Chat-Texte oder flüchtige Gedanken – wirf alles in den Trichter.
             </p>
             
@@ -966,8 +998,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                 value={seedInput}
                 onChange={(e) => setSeedInput(e.target.value)}
                 onKeyDown={(e) => e.ctrlKey && e.key === 'Enter' && handleAnalyze()}
-                rows={4} 
-                className="w-full bg-black/20 text-white p-4 rounded-xl border border-white/5 focus:border-primary/50 focus:ring-0 outline-none transition-all text-sm resize-none placeholder:text-slate-700" 
+                rows={2} 
+                className="w-full bg-black/20 text-white p-3 rounded-xl border border-white/5 focus:border-primary/50 focus:ring-0 outline-none transition-all text-sm resize-none placeholder:text-slate-700" 
                 placeholder="Was beschäftigt dich gerade?"
               />
               
@@ -1014,35 +1046,35 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
           </div>
 
           {/* Log & Chat Area */}
-          <div className="flex-1 flex flex-col min-h-[100px] lg:overflow-hidden">
-            <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
-              <h3 className="text-sm font-bold text-slate-300 flex items-center">
-                <History className="w-4 h-4 mr-2 text-slate-500" /> Analysten-Log
+          <div className="flex-1 flex flex-col min-h-0 lg:overflow-hidden">
+            <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+              <h3 className="text-[11px] font-bold text-slate-400 flex items-center uppercase tracking-wider">
+                <History className="w-3.5 h-3.5 mr-2 text-slate-500" /> Analysten-Log
               </h3>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setIsLogCollapsed(!isLogCollapsed)}
-                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-primary uppercase tracking-widest px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all active:scale-95"
+                  className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all active:scale-95"
                   title={isLogCollapsed ? "Log zeigen" : "Log einklappen"}
                 >
-                  {isLogCollapsed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span className="hidden xs:inline">{isLogCollapsed ? "Zeigen" : "Einklappen"}</span>
+                  {isLogCollapsed ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  <span className="hidden xs:inline">{isLogCollapsed ? "Log" : "Hide"}</span>
                 </button>
                 <button 
                   onClick={() => setIsInputCollapsed(!isInputCollapsed)}
-                  className="flex items-center gap-1.5 text-[10px] font-bold text-primary/70 hover:text-primary uppercase tracking-widest px-3 py-2 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
+                  className="flex items-center gap-1.5 text-[9px] font-bold text-primary/70 hover:text-primary uppercase tracking-widest px-2 py-1 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
                   title={isInputCollapsed ? "Seed-Eingabe öffnen" : "Seed-Eingabe einklappen"}
                 >
-                  {isInputCollapsed ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
-                  <span className="hidden xs:inline">{isInputCollapsed ? "Eingabe" : "Einklappen"}</span>
+                  {isInputCollapsed ? <Maximize2 className="w-3 h-3" /> : <Minimize2 className="w-3 h-3" />}
+                  <span className="hidden xs:inline">{isInputCollapsed ? "Input" : "Hide"}</span>
                 </button>
               </div>
             </div>
 
             {/* System Logs (Collapsible) */}
-            <div className={cn("space-y-2 mb-4 transition-all duration-500 overflow-hidden", isLogCollapsed ? "max-h-0 opacity-0" : "max-h-[120px] opacity-100 overflow-y-auto pr-2 scrollbar-hide")}>
+            <div className={cn("space-y-1.5 mb-3 transition-all duration-500 overflow-hidden", isLogCollapsed ? "max-h-0 opacity-0" : "max-h-[100px] opacity-100 overflow-y-auto pr-2 scrollbar-hide")}>
               {logs.filter(l => l.sender === 'System').map(log => (
-                <div key={log.id} className="text-[10px] text-slate-500 italic border-l border-white/10 pl-3 py-1 bg-white/[0.02] rounded-r-lg">
+                <div key={log.id} className="text-[9px] text-slate-500 italic border-l border-white/10 pl-2 py-0.5 bg-white/[0.02] rounded-r-lg">
                   <span className="text-[8px] text-slate-700 mr-2 font-mono">
                     {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -1051,74 +1083,99 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
               ))}
             </div>
 
-            {/* Chat Messages (Flexible) */}
-            <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-4 min-h-[200px] lg:min-h-0">
-              <AnimatePresence initial={false}>
-                {logs.filter(l => l.sender !== 'System').map((log) => (
-                  <motion.div 
-                    key={log.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={cn(
-                      "p-3 rounded-2xl border transition-all backdrop-blur-md",
-                      log.sender === 'User' 
-                        ? "bg-white/5 border-white/5 text-slate-300 ml-4" 
-                        : "bg-primary/5 border-primary/20 text-slate-200 mr-4"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-wider",
-                        log.sender === 'User' ? "text-slate-500" : "text-primary"
-                      )}>
-                        {log.sender}
-                      </span>
-                      <span className="text-[9px] text-slate-600 font-mono">
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <div className="markdown-body">
-                      <ReactMarkdown>{log.text}</ReactMarkdown>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-
-            {/* Chat Input */}
-            <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
-              <div className="relative flex-1">
-                <input 
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Frag deinen digitalen Zwilling..."
-                  disabled={isChatting}
-                  className="w-full bg-panel/40 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm focus:border-primary/50 outline-none transition-all placeholder:text-slate-600"
-                />
+            {/* Chat Area (Collapsible) */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[11px] font-bold text-slate-400 flex items-center uppercase tracking-wider">
+                  <MessageSquare className="w-3.5 h-3.5 mr-2 text-slate-500" /> Chat
+                </h3>
                 <button 
-                  type="submit"
-                  disabled={isChatting || !chatInput.trim()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
+                  onClick={() => setIsChatCollapsed(!isChatCollapsed)}
+                  className="p-1.5 text-slate-500 hover:text-primary transition-all"
                 >
-                  {isChatting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
+                  {isChatCollapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
               </div>
-              <button 
-                type="button"
-                onClick={() => handleChatSubmit(undefined, true)}
-                disabled={isChatting || !chatInput.trim()}
-                className="p-3 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl border border-accent/20 transition-all flex items-center justify-center group"
-                title="Tiefe Antwort anfordern"
-              >
-                <Zap className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Deep</span>
-              </button>
-            </form>
+
+              <div className={cn("flex-1 flex flex-col min-h-0 transition-all duration-500 overflow-hidden", isChatCollapsed ? "max-h-0 opacity-0" : "max-h-full opacity-100")}>
+                {/* Chat Messages */}
+                <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-3 min-h-[150px] lg:min-h-0">
+                  <AnimatePresence initial={false}>
+                    {logs.filter(l => l.sender !== 'System').map((log) => (
+                      <motion.div 
+                        key={log.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "p-2.5 rounded-xl border transition-all backdrop-blur-md",
+                          log.sender === 'User' 
+                            ? "bg-white/5 border-white/5 text-slate-300 ml-4" 
+                            : "bg-primary/5 border-primary/20 text-slate-200 mr-4"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={cn(
+                            "text-[9px] font-bold uppercase tracking-wider",
+                            log.sender === 'User' ? "text-slate-500" : "text-primary"
+                          )}>
+                            {log.sender}
+                          </span>
+                          <span className="text-[8px] text-slate-600 font-mono">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="markdown-body text-xs">
+                          <ReactMarkdown>{log.text}</ReactMarkdown>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+
+                {/* Chat Input */}
+                <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
+                  <div className="relative flex-1">
+                    <input 
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Frag deinen digitalen Zwilling..."
+                      disabled={isChatting}
+                      className="w-full bg-panel/40 border border-white/10 rounded-xl py-2 pl-3 pr-10 text-xs focus:border-primary/50 outline-none transition-all placeholder:text-slate-600"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isChatting || !chatInput.trim()}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
+                    >
+                      {isChatting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => handleChatSubmit(undefined, true)}
+                    disabled={isChatting || !chatInput.trim()}
+                    className="p-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl border border-accent/20 transition-all flex items-center justify-center group"
+                    title="Tiefe Antwort anfordern"
+                  >
+                    <Zap className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                  </button>
+                </form>
+              </div>
+
+              {isChatCollapsed && logs.filter(l => l.sender !== 'System').length > 0 && (
+                <div className="flex items-center gap-2 p-2 bg-white/[0.02] border border-white/5 rounded-xl cursor-pointer hover:bg-white/[0.05] transition-all" onClick={() => setIsChatCollapsed(false)}>
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  <p className="text-[10px] text-slate-500 font-medium truncate">
+                    Letzte Nachricht: {logs.filter(l => l.sender !== 'System').slice(-1)[0].text.substring(0, 30)}...
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
@@ -1256,6 +1313,43 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                               </p>
                               <p className="text-sm text-white font-medium leading-relaxed">
                                 {topPriority.nextStep || 'Analysiere die nächsten Schritte zur Umsetzung.'}
+                              </p>
+                            </div>
+                            
+                            {/* Mission Details */}
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <Clock className="w-3 h-3" /> Zeitbedarf
+                              </p>
+                              <p className="text-sm text-slate-300 font-medium">
+                                {topPriority.duration || 'Unbekannt'}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <Layers className="w-3 h-3" /> Missionstyp
+                              </p>
+                              <p className="text-sm text-slate-300 font-medium">
+                                {topPriority.missionType || 'Bauen'}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <ShieldAlert className="w-3 h-3" /> Blockiert durch?
+                              </p>
+                              <p className={cn(
+                                "text-sm font-medium",
+                                topPriority.blockedBy && topPriority.blockedBy !== 'Keine' ? "text-red-400" : "text-slate-300"
+                              )}>
+                                {topPriority.blockedBy || 'Keine'}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                <AlertTriangle className="w-3 h-3" /> Konsequenz bei Ignorieren
+                              </p>
+                              <p className="text-sm text-red-400/80 leading-relaxed italic">
+                                {topPriority.consequence || 'Keine unmittelbare Konsequenz definiert.'}
                               </p>
                             </div>
                           </div>
@@ -1682,6 +1776,7 @@ interface BoardCardProps {
 }
 
 function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isNoise = item.category === 'NOISE';
   const isGC = item.category === 'GAME CHANGER';
   const vault = VAULTS.find(v => v.id === item.vaultId);
@@ -1747,17 +1842,35 @@ function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps)
       <p className="text-sm leading-relaxed font-medium tracking-tight mb-2">{item.text}</p>
       
       {(item.reasoning || item.nextStep) && !isNoise && (
-        <div className="mt-2 space-y-1.5 border-t border-white/5 pt-2">
-          {item.reasoning && (
-            <p className="text-[10px] text-slate-400 italic leading-relaxed">
-              <span className="text-primary/60 mr-1">Why:</span> {item.reasoning}
-            </p>
-          )}
-          {item.nextStep && (
-            <p className="text-[10px] text-emerald-400/80 font-medium">
-              <span className="text-emerald-500 mr-1">Next:</span> {item.nextStep}
-            </p>
-          )}
+        <div className="mt-2 border-t border-white/5 pt-2">
+          <button 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary transition-colors mb-1.5"
+          >
+            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Details
+          </button>
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="space-y-1.5 overflow-hidden"
+              >
+                {item.reasoning && (
+                  <p className="text-[10px] text-slate-400 italic leading-relaxed">
+                    <span className="text-primary/60 mr-1">Why:</span> {item.reasoning}
+                  </p>
+                )}
+                {item.nextStep && (
+                  <p className="text-[10px] text-emerald-400/80 font-medium">
+                    <span className="text-emerald-500 mr-1">Next:</span> {item.nextStep}
+                  </p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
