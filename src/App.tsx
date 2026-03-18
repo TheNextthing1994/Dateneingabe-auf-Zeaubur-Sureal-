@@ -171,8 +171,15 @@ export default function App() {
     console.log('VITE_SURREALDB_URL from getEnv:', getEnv('VITE_SURREALDB_URL'));
     console.log('-------------------------');
     
-    const keyStatus = getEnv('VITE_GEMINI_API_KEY') ? 'Defined' : 'Undefined';
+    const key = getEnv('VITE_GEMINI_API_KEY');
+    const keyStatus = key ? 'Defined' : 'Undefined';
     console.log('Gemini API Key status:', keyStatus);
+    
+    // If key is missing, show a prominent log
+    if (!key) {
+      console.error('CRITICAL: VITE_GEMINI_API_KEY is missing! Analysis will fail.');
+    }
+    
     if (isDarkMode) {
       document.documentElement.classList.remove('light');
     } else {
