@@ -7,7 +7,6 @@ export const getEnv = (key: string, defaultValue: string = ''): string => {
   if (typeof window !== 'undefined' && (window as any).ENV) {
     const val = (window as any).ENV[key];
     if (val && val !== `\${${key}}`) {
-      console.log(`[getEnv] Found ${key} in window.ENV:`, val.substring(0, 5) + '...');
       return val;
     }
     
@@ -16,7 +15,6 @@ export const getEnv = (key: string, defaultValue: string = ''): string => {
       const shortKey = key.replace('VITE_', '');
       const shortVal = (window as any).ENV[shortKey];
       if (shortVal && shortVal !== `\${${shortKey}}`) {
-        console.log(`[getEnv] Found ${shortKey} in window.ENV:`, shortVal.substring(0, 5) + '...');
         return shortVal;
       }
     }
@@ -32,10 +30,8 @@ export const getEnv = (key: string, defaultValue: string = ''): string => {
   else if (key === 'VITE_SURREALDB_PASS') buildVal = import.meta.env.VITE_SURREALDB_PASS;
   
   if (buildVal) {
-    console.log(`[getEnv] Found ${key} in import.meta.env:`, buildVal.substring(0, 5) + '...');
     return buildVal;
   }
   
-  console.warn(`[getEnv] ${key} not found in window.ENV or import.meta.env. Using default.`);
   return defaultValue;
 };

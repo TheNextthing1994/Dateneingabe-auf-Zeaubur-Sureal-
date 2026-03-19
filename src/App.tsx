@@ -48,6 +48,7 @@ import {
   Moon,
   Download,
   ChevronDown,
+  Youtube,
   ChevronUp,
   Maximize2,
   Minimize2,
@@ -57,7 +58,8 @@ import {
   Copy,
   ShieldAlert,
   Layers,
-  AlertTriangle
+  AlertTriangle,
+  Pin
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -86,7 +88,7 @@ interface Pillar {
 
 interface LogEntry {
   id: string;
-  sender: 'User' | 'D.T. Kern' | 'System';
+  sender: 'User' | 'D.T. Kern' | 'System' | 'D.T. Kern (Strategie)';
   text: string;
   isCode?: boolean;
   timestamp: number;
@@ -108,6 +110,7 @@ interface AnalyzedItem {
   missionType?: 'Bauen' | 'Denken' | 'Planen' | 'Entscheiden' | 'Dokumentieren';
   consequence?: string;
   timestamp: number;
+  sourceUrl?: string;
 }
 
 interface MissionPlan {
@@ -115,6 +118,15 @@ interface MissionPlan {
   rawId?: string;
   text: string;
   targetDate: string; // YYYY-MM-DD
+  timestamp: number;
+}
+
+interface BillboardItem {
+  id: string;
+  text: string;
+  origin: 'Seed' | 'Mission' | 'Analyse' | 'Manuell';
+  expiry: 'heute' | 'diese Woche' | 'dauerhaft';
+  type: 'intel' | 'blocker';
   timestamp: number;
 }
 
@@ -143,6 +155,67 @@ const INITIAL_PILLARS: Pillar[] = [
   { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
 ];
 
+function BillboardCard({ 
+  item, 
+  onRemove, 
+  onTakeToMission 
+}: { 
+  item: BillboardItem; 
+  onRemove: (id: string, type: 'intel' | 'blocker') => void;
+  onTakeToMission: (item: BillboardItem) => void;
+}) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className={cn(
+        "group relative p-3 rounded-xl border transition-all",
+        item.type === 'intel' 
+          ? "bg-sky-400/5 border-sky-400/20 hover:border-sky-400/40" 
+          : "bg-red-400/5 border-red-400/20 hover:border-red-400/40"
+      )}
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5">
+          <Pin className={cn("w-3 h-3", item.type === 'intel' ? "text-sky-400" : "text-red-400")} />
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+            {item.origin}
+          </span>
+          {item.expiry && (
+            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1">
+              • <Clock className="w-2 h-2" /> {item.expiry}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={() => onTakeToMission(item)}
+            className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-primary transition-colors"
+            title="In Mission übernehmen"
+          >
+            <Target className="w-3 h-3" />
+          </button>
+          <button 
+            onClick={() => onRemove(item.id, item.type)}
+            className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-red-400 transition-colors"
+            title="Entfernen"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+      <p className={cn(
+        "text-xs leading-relaxed font-medium",
+        item.type === 'intel' ? "text-sky-100" : "text-red-100"
+      )}>
+        {item.text}
+      </p>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const [seedInput, setSeedInput] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -159,8 +232,11 @@ export default function App() {
   const [todaysMission, setTodaysMission] = useState<MissionPlan | null>(null);
   const [isLoggingMission, setIsLoggingMission] = useState(false);
   const [isMissionLocked, setIsMissionLocked] = useState(false);
-  const [pinnedIntel, setPinnedIntel] = useState('');
-  const [pinnedBlocker, setPinnedBlocker] = useState('');
+  const [pinnedIntelItems, setPinnedIntelItems] = useState<BillboardItem[]>([]);
+  const [pinnedBlockerItems, setPinnedBlockerItems] = useState<BillboardItem[]>([]);
+  const [intelInput, setIntelInput] = useState('');
+  const [blockerInput, setBlockerInput] = useState('');
+  const [selectedSeeds, setSelectedSeeds] = useState<AnalyzedItem[]>([]);
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
     url: getEnv('VITE_SURREALDB_URL'),
@@ -235,6 +311,56 @@ export default function App() {
     showNotification('Seed in Mission übernommen!', 'success');
   };
 
+  const handlePinItem = (text: string, type: 'intel' | 'blocker', origin: BillboardItem['origin'] = 'Manuell', expiry: BillboardItem['expiry'] = 'dauerhaft') => {
+    if (!text.trim()) return;
+    const newItem: BillboardItem = {
+      id: Date.now().toString(),
+      text,
+      origin,
+      expiry,
+      type,
+      timestamp: Date.now()
+    };
+    if (type === 'intel') {
+      const updated = [newItem, ...pinnedIntelItems];
+      setPinnedIntelItems(updated);
+      localStorage.setItem('dt_pinned_intel_items', JSON.stringify(updated));
+      setIntelInput('');
+    } else {
+      const updated = [newItem, ...pinnedBlockerItems];
+      setPinnedBlockerItems(updated);
+      localStorage.setItem('dt_pinned_blocker_items', JSON.stringify(updated));
+      setBlockerInput('');
+    }
+    showNotification(`${type === 'intel' ? 'Intel' : 'Blocker'} gepinnt!`, 'success');
+  };
+
+  const handleRemovePinnedItem = (id: string, type: 'intel' | 'blocker') => {
+    if (type === 'intel') {
+      const updated = pinnedIntelItems.filter(i => i.id !== id);
+      setPinnedIntelItems(updated);
+      localStorage.setItem('dt_pinned_intel_items', JSON.stringify(updated));
+    } else {
+      const updated = pinnedBlockerItems.filter(i => i.id !== id);
+      setPinnedBlockerItems(updated);
+      localStorage.setItem('dt_pinned_blocker_items', JSON.stringify(updated));
+    }
+  };
+
+  const handleTakeBillboardToMission = (item: BillboardItem) => {
+    setMissionInput(item.text);
+    const newMission: MissionPlan = {
+      id: Date.now().toString(),
+      text: item.text,
+      targetDate: new Date().toISOString().split('T')[0],
+      timestamp: Date.now()
+    };
+    setTodaysMission(newMission);
+    setIsMissionLocked(true);
+    localStorage.setItem('dt_mission_plan', JSON.stringify(newMission));
+    showNotification('Billboard-Item in Mission übernommen!', 'success');
+  };
+
   const pillars = useMemo(() => {
     return INITIAL_PILLARS.map(p => {
       const items = analyzedItems.filter(item => item.pillarId === p.id);
@@ -270,11 +396,11 @@ export default function App() {
       setTodaysMission(parsed);
     }
     
-    const savedIntel = localStorage.getItem('dt_pinned_intel');
-    if (savedIntel) setPinnedIntel(savedIntel);
+    const savedIntelItems = localStorage.getItem('dt_pinned_intel_items');
+    if (savedIntelItems) setPinnedIntelItems(JSON.parse(savedIntelItems));
     
-    const savedBlocker = localStorage.getItem('dt_pinned_blocker');
-    if (savedBlocker) setPinnedBlocker(savedBlocker);
+    const savedBlockerItems = localStorage.getItem('dt_pinned_blocker_items');
+    if (savedBlockerItems) setPinnedBlockerItems(JSON.parse(savedBlockerItems));
   }, []);
 
   // Auto-connect to SurrealDB if config is present
@@ -389,8 +515,8 @@ export default function App() {
   };
 
   const handleSaveBillboard = () => {
-    localStorage.setItem('dt_pinned_intel', pinnedIntel);
-    localStorage.setItem('dt_pinned_blocker', pinnedBlocker);
+    localStorage.setItem('dt_pinned_intel_items', JSON.stringify(pinnedIntelItems));
+    localStorage.setItem('dt_pinned_blocker_items', JSON.stringify(pinnedBlockerItems));
     showNotification('Billboard aktualisiert.', 'success');
   };
 
@@ -434,10 +560,6 @@ export default function App() {
     }
   };
 
-  const handleUnlockMission = () => {
-    setIsMissionLocked(false);
-  };
-
   const handleChatSubmit = async (e?: React.FormEvent, isDeep: boolean = false) => {
     if (e) e.preventDefault();
     const text = chatInput.trim();
@@ -457,9 +579,17 @@ export default function App() {
       const apiKey = getEnv('VITE_GEMINI_API_KEY');
       const ai = new GoogleGenAI({ apiKey });
       
-      // Fetch context from SurrealDB
+      // Fetch context
       let contextData = "";
-      if (surrealStatus === 'connected') {
+      
+      if (selectedSeeds.length > 0) {
+        contextData = `
+Hier sind die vom Nutzer SPEZIELL AUSGEWÄHLTEN Seeds für diesen Chat-Kontext:
+${selectedSeeds.map(s => `- [${s.category}] ${s.text} (Score: ${s.score}, Säule: ${s.pillarId}, Vault: ${s.vaultId})`).join('\n')}
+
+Bitte konzentriere dich primär auf diese ausgewählten Informationen.
+`;
+      } else if (surrealStatus === 'connected') {
         const [seeds, missions] = await Promise.all([
           surrealService.getSeeds(),
           surrealService.getMissions()
@@ -474,13 +604,24 @@ MISSIONEN (Geplante Aufgaben):
 ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
 `;
       } else {
-        contextData = "Hinweis: SurrealDB ist aktuell nicht verbunden. Ich habe nur Zugriff auf die Demo-Daten.";
+        contextData = "Hinweis: SurrealDB ist aktuell nicht verbunden. Ich habe nur Zugriff auf die lokalen Daten.";
       }
+
+      const billboardContext = `
+AKTUELLER BILLBOARD-STATUS (Festgenagelte Relevanz & Prioritäten):
+- AKTIVE MISSION: ${missionInput || 'Keine aktive Mission eingeloggt.'}
+- PINNED INTEL (Wichtige Erkenntnisse/Einschränkungen):
+${pinnedIntelItems.length > 0 ? pinnedIntelItems.map(i => `  * [${i.origin}] ${i.text} (Ablauf: ${i.expiry})`).join('\n') : '  Keine Intel gepinnt.'}
+- BLOCKER / WARNUNGEN:
+${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}] ${i.text} (Ablauf: ${i.expiry})`).join('\n') : '  Keine Blocker gepinnt.'}
+`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Du bist D.T. Kern, der digitale Zwilling und Analyst des Nutzers. 
-        Deine Aufgabe ist es, den Nutzer basierend auf seinen Daten in SurrealDB zu beraten.
+        Deine Aufgabe ist es, den Nutzer basierend auf seinen Daten zu beraten.
+        
+        ${billboardContext}
         
         KONTEXT AUS DER DATENBANK:
         ${contextData}
@@ -489,8 +630,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         ${text}`,
         config: {
           systemInstruction: isDeep 
-            ? "Antworte ausführlich, tiefgründig und analytisch. Gehe ins Detail, erstelle Pläne und analysiere Zusammenhänge zwischen den Seeds. Nutze die 5 Säulen als strategischen Kompass. WICHTIG: Verzichte auf Begrüßungen oder Vorstellungen deiner Identität (wie 'Ich bin D.T. Kern' oder 'dein digitaler Zwilling'), da der Nutzer dies bereits weiß. Steige direkt in die Analyse ein."
-            : "Antworte extrem kurz, gezielt und wie ein echter Gesprächspartner. Maximal 1-2 Sätze. Sei präzise und direkt.",
+            ? "Du bist D.T. Kern. Deine oberste Priorität ist der Billboard-Status. 1. AKTIVE MISSION: Alles was du vorschlägst, muss diese Mission unterstützen oder zumindest nicht behindern. 2. BLOCKER: Wenn der Nutzer etwas verlangt, das einem Blocker auf dem Billboard widerspricht, musst du ihn SOFORT darauf hinweisen und die Anfrage ablehnen oder korrigieren (Reality Check). 3. INTEL: Beachte alle Einschränkungen (Zeit, Ressourcen). Antworte tiefgründig, analytisch und ohne Begrüßung. Nutze die 5 Säulen als Kompass."
+            : "Du bist D.T. Kern. Antworte extrem kurz (max 2 Sätze). WICHTIG: Wenn der Nutzer etwas fragt, das gegen einen Blocker auf dem Billboard verstößt, weise ihn direkt darauf hin. Die Aktive Mission ist dein Fokus. Sei präzise und direkt.",
         }
       });
 
@@ -511,6 +652,91 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         text: 'Fehler bei der Kommunikation mit der KI.',
         timestamp: Date.now()
       }]);
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
+  const handleMakeMission = async (item: AnalyzedItem) => {
+    const newMission = {
+      id: Date.now().toString(),
+      text: item.text,
+      targetDate: new Date().toISOString().split('T')[0],
+      timestamp: Date.now()
+    };
+    
+    if (surrealStatus === 'connected') {
+      try {
+        await surrealService.saveMission(newMission);
+        showNotification('Mission in SurrealDB gespeichert.', 'success');
+      } catch (err) {
+        console.error('Failed to save mission to SurrealDB:', err);
+        showNotification('Fehler beim Speichern der Mission.', 'warn');
+      }
+    } else {
+      showNotification('Mission lokal erstellt (SurrealDB nicht verbunden).', 'info');
+    }
+  };
+
+  const handleMoveToVault = (item: AnalyzedItem) => {
+    setAnalyzedItems(prev => prev.filter(i => i.id !== item.id));
+    showNotification(`In Vault [${item.vaultId.toUpperCase()}] archiviert.`, 'success');
+  };
+
+  const handleUpdateVault = (itemId: string, vaultId: AnalyzedItem['vaultId']) => {
+    setAnalyzedItems(prev => prev.map(item => 
+      item.id === itemId ? { ...item, vaultId } : item
+    ));
+    showNotification(`Vault auf [${vaultId.toUpperCase()}] geändert.`, 'info');
+  };
+
+  const handleSuggestNextTask = async () => {
+    if (isChatting) return;
+    
+    const topGameChanger = analyzedItems
+      .filter(item => item.category === 'GAME CHANGER')
+      .sort((a, b) => b.score - a.score)[0];
+      
+    const mission = missionInput || 'Keine aktive Mission eingeloggt.';
+    
+    setIsChatting(true);
+    
+    try {
+      const apiKey = getEnv('VITE_GEMINI_API_KEY');
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `
+        Du bist D.T. Kern (Strategie-Modus). 
+        Basierend auf der aktuellen Aktiven Mission und dem wichtigsten Game Changer, schlage den EINEN nächsten, höchst-impactvollen Schritt vor.
+        
+        AKTIVE MISSION: ${mission}
+        TOP GAME CHANGER: ${topGameChanger ? `[${topGameChanger.vaultId.toUpperCase()}] ${topGameChanger.text} (Score: ${topGameChanger.score})` : 'Kein Game Changer vorhanden.'}
+        
+        BILLBOARD-KONTEXT:
+        - INTEL: ${pinnedIntelItems.map(i => i.text).join(', ') || 'Keine'}
+        - BLOCKER: ${pinnedBlockerItems.map(i => i.text).join(', ') || 'Keine'}
+        
+        Antworte extrem kurz, direkt und handlungsorientiert (max. 2 Sätze).
+      `;
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      
+      const aiText = response.text || "Ich konnte keinen nächsten Schritt identifizieren.";
+      
+      setLogs(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: 'D.T. Kern (Strategie)',
+        text: `🎯 STRATEGIE-VORSCHLAG:\n\n${aiText}`,
+        timestamp: Date.now()
+      }]);
+      
+      showNotification('Strategie-Vorschlag generiert.', 'success');
+    } catch (err) {
+      console.error('Strategy Suggestion Error:', err);
+      showNotification('Fehler beim Generieren des Vorschlags.', 'warn');
     } finally {
       setIsChatting(false);
     }
@@ -556,6 +782,17 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
     }
   };
 
+  const toggleSeedSelection = (item: AnalyzedItem) => {
+    setSelectedSeeds(prev => {
+      const isSelected = prev.find(s => s.id === item.id);
+      if (isSelected) {
+        return prev.filter(s => s.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+  };
+
   const handleAnalyze = async () => {
     const text = seedInput.trim();
     if (!text) {
@@ -585,14 +822,55 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
     }]);
     setSeedInput('');
 
+    let contentToAnalyze = text;
+    let isYoutube = false;
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/;
+    const match = text.match(youtubeRegex);
+
+    if (match) {
+      isYoutube = true;
+      setLogs(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'System',
+        text: 'YouTube-Link erkannt. Starte Deep-Scan (Transkript-Abruf)...',
+        timestamp: Date.now()
+      }]);
+
+      try {
+        const transcriptResponse = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(text)}`);
+        if (transcriptResponse.ok) {
+          const data = await transcriptResponse.json();
+          contentToAnalyze = `YouTube Video Transkript: ${data.transcript}`;
+          setLogs(prev => [...prev, {
+            id: (Date.now() + 2).toString(),
+            sender: 'System',
+            text: `Transkript erfolgreich abgerufen (${data.parts} Segmente). Starte KI-Analyse...`,
+            timestamp: Date.now()
+          }]);
+        } else {
+          console.warn('Failed to fetch transcript, falling back to URL analysis');
+          setLogs(prev => [...prev, {
+            id: (Date.now() + 2).toString(),
+            sender: 'System',
+            text: 'Transkript-Abruf fehlgeschlagen (Video hat evtl. keine Untertitel). Analysiere nur den Link...',
+            timestamp: Date.now()
+          }]);
+        }
+      } catch (err) {
+        console.error('Transcript fetch error:', err);
+      }
+    }
+
     try {
       const apiKey = getEnv('VITE_GEMINI_API_KEY');
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Analysiere diesen "Seed" (Gedanke, Idee, Projekt, Kundenanfrage) und kategorisiere ihn.
+        contents: `Analysiere diesen "Seed" (Gedanke, Idee, Projekt, Kundenanfrage, oder ein Video-Transkript) und kategorisiere ihn.
         
-        Seed: "${text}"
+        ${isYoutube ? "Dies ist ein Transkript eines YouTube-Videos. Extrahiere die wichtigsten Erkenntnisse und erstelle eine prägnante Zusammenfassung (max 2 Sätze) für das Feld 'text'. Wenn der Titel des Videos im Transkript erkennbar ist, nutze ihn als Präfix." : ""}
+        
+        Seed: "${contentToAnalyze}"
         
         Säulen (pillarId):
         - health (Gesundheit)
@@ -683,7 +961,8 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
         blockedBy: result.blockedBy || 'Keine',
         missionType: result.missionType as any || 'Bauen',
         consequence: result.consequence || '',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        sourceUrl: isYoutube ? text : undefined
       };
 
       setAnalyzedItems(prev => [newItem, ...prev]);
@@ -1132,6 +1411,44 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   </AnimatePresence>
                 </div>
 
+                {/* Selected Seeds Context */}
+                {selectedSeeds.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2 p-2 bg-primary/5 border border-primary/20 rounded-xl">
+                    <div className="w-full flex justify-between items-center mb-1 px-1">
+                      <span className="text-[9px] font-bold text-primary uppercase tracking-widest flex items-center gap-1">
+                        <Database className="w-2.5 h-2.5" /> {selectedSeeds.length} Seeds im Kontext
+                      </span>
+                      <button 
+                        onClick={() => setSelectedSeeds([])}
+                        className="text-[8px] text-slate-500 hover:text-red-400 font-bold uppercase tracking-tighter transition-colors"
+                      >
+                        Alle entfernen
+                      </button>
+                    </div>
+                    <AnimatePresence>
+                      {selectedSeeds.map(seed => (
+                        <motion.div 
+                          key={seed.id}
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg group"
+                        >
+                          <span className="text-[10px] text-slate-200 truncate max-w-[120px] font-medium">
+                            {seed.text.substring(0, 25)}...
+                          </span>
+                          <button 
+                            onClick={() => toggleSeedSelection(seed)}
+                            className="text-primary/40 hover:text-red-400 transition-colors"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+
                 {/* Chat Input */}
                 <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
                   <div className="relative flex-1">
@@ -1216,8 +1533,26 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <div className="pb-2">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {OPERATIVE_TILES.map(tile => {
-                        const count = analyzedItems.filter(i => i.status === tile.status).length;
+                        const tileItems = analyzedItems.filter(i => i.status === tile.status);
+                        const count = tileItems.length;
                         const isActive = selectedFilterId === tile.id;
+                        
+                        // Mini-Kontext Logik
+                        let contextStr = "";
+                        if (tile.id === 'offen') {
+                          if (count === 0) contextStr = "Keine neuen Seeds";
+                          else {
+                            const oldest = Math.min(...tileItems.map(i => i.timestamp || Date.now()));
+                            const diffMin = Math.floor((Date.now() - oldest) / 60000);
+                            const timeStr = diffMin < 1 ? "gerade eben" : diffMin < 60 ? `seit ${diffMin} Min` : `seit ${Math.floor(diffMin/60)} Std`;
+                            contextStr = `${count} unverarbeitete Seeds ${timeStr}`;
+                          }
+                        } else if (tile.id === 'in_arbeit') {
+                          contextStr = count === 1 ? "1 aktive Mission" : `${count} aktive Missionen`;
+                        } else if (tile.id === 'blockiert') {
+                          contextStr = count === 1 ? "1 offener Blocker" : `${count} offene Blocker`;
+                        }
+
                         return (
                           <button 
                             key={tile.id} 
@@ -1228,14 +1563,20 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                               "w-full bg-panel/30 backdrop-blur-md rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
                               isActive 
                                 ? "border-primary shadow-[0_0_20px_rgba(16,185,129,0.15)] scale-[1.02]" 
-                                : "border-white/5 hover:border-white/10"
+                                : "border-white/5 hover:border-white/10",
+                              tile.id === 'in_arbeit' && count > 0 && "shadow-[0_0_25px_rgba(59,130,246,0.15)]",
+                              tile.id === 'blockiert' && count > 0 && "border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
                             )}>
                               {/* Background Glow */}
-                              <div className="absolute -top-12 -right-12 w-24 h-24 bg-white/5 blur-3xl rounded-full"></div>
+                              <div className={cn(
+                                "absolute -top-12 -right-12 w-24 h-24 blur-3xl rounded-full transition-all duration-500",
+                                tile.id === 'in_arbeit' && count > 0 ? "bg-primary/20" : "bg-white/5"
+                              )}></div>
                               
                               <div className={cn(
                                 "w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all duration-300",
-                                isActive ? "bg-primary/20 scale-110" : "bg-white/5 group-hover:scale-110"
+                                isActive ? "bg-primary/20 scale-110" : "bg-white/5 group-hover:scale-110",
+                                tile.id === 'blockiert' && count > 0 && "animate-pulse"
                               )}>
                                 {tile.icon}
                               </div>
@@ -1247,9 +1588,20 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                                 )}>
                                   {tile.name}
                                 </span>
-                                <span className="text-2xl font-black text-white">
-                                  {count}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-2xl font-black text-white">
+                                    {count}
+                                  </span>
+                                  {tile.id === 'blockiert' && count > 0 && (
+                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                                  )}
+                                  {tile.id === 'in_arbeit' && count > 0 && (
+                                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                                  )}
+                                </div>
+                                <p className="text-[9px] font-medium text-slate-400 mt-1 italic leading-tight">
+                                  {contextStr}
+                                </p>
                               </div>
 
                               {isActive && (
@@ -1319,14 +1671,6 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                             {/* Mission Details */}
                             <div className="space-y-2">
                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                                <Clock className="w-3 h-3" /> Zeitbedarf
-                              </p>
-                              <p className="text-sm text-slate-300 font-medium">
-                                {topPriority.duration || 'Unbekannt'}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
                                 <Layers className="w-3 h-3" /> Missionstyp
                               </p>
                               <p className="text-sm text-slate-300 font-medium">
@@ -1353,64 +1697,65 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                               </p>
                             </div>
                           </div>
-
-                          <div className="flex flex-wrap items-center gap-4 pt-4">
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
-                              <div className={cn(
-                                "w-2 h-2 rounded-full",
-                                topPriority.status === 'In Arbeit' ? "bg-blue-500" : 
-                                topPriority.status === 'Blockiert' ? "bg-red-500" : "bg-emerald-500"
-                              )}></div>
-                              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-                                {topPriority.status || 'Offen'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
-                              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-                                {INITIAL_PILLARS.find(p => p.id === topPriority.pillarId)?.name || 'Allgemein'}
-                              </span>
-                            </div>
-                          </div>
                         </div>
 
-                        <div className="w-full md:w-auto flex flex-col items-center justify-center gap-4">
-                          <div className="relative">
-                            <svg className="w-32 h-32 transform -rotate-90">
-                              <circle
-                                cx="64"
-                                cy="64"
-                                r="58"
-                                stroke="currentColor"
-                                strokeWidth="8"
-                                fill="transparent"
-                                className="text-white/5"
-                              />
-                              <motion.circle
-                                cx="64"
-                                cy="64"
-                                r="58"
-                                stroke="currentColor"
-                                strokeWidth="8"
-                                fill="transparent"
-                                strokeDasharray={364.4}
-                                initial={{ strokeDashoffset: 364.4 }}
-                                animate={{ strokeDashoffset: 364.4 - (364.4 * topPriority.score) / 10 }}
-                                transition={{ duration: 1.5, ease: "easeOut" }}
-                                className="text-primary"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="text-3xl font-bold text-white">{topPriority.score.toFixed(1)}</span>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">Impact</span>
+                        <div className="w-full md:w-auto flex flex-col gap-4">
+                          {/* Compact Priority Block (Entscheidungsmodul) */}
+                          <div className="w-full md:w-56 bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-2 opacity-10">
+                              <Trophy className="w-12 h-12 text-primary" />
+                            </div>
+                            
+                            <div className="flex flex-col relative z-10">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Impact Score</span>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-4xl font-black text-primary tracking-tighter">{topPriority.score.toFixed(1)}</span>
+                                <span className="text-xs font-bold text-slate-600">/ 10</span>
+                              </div>
+                            </div>
+
+                            <div className="h-px bg-white/10"></div>
+
+                            <div className="space-y-3 relative z-10">
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bereich</span>
+                                <span className="text-[11px] font-bold text-slate-200 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                                  {INITIAL_PILLARS.find(p => p.id === topPriority.pillarId)?.name || 'Allgemein'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</span>
+                                <div className="flex items-center gap-1.5">
+                                  <div className={cn(
+                                    "w-1.5 h-1.5 rounded-full",
+                                    topPriority.status === 'In Arbeit' ? "bg-blue-500" : 
+                                    topPriority.status === 'Blockiert' ? "bg-red-500" : "bg-emerald-500"
+                                  )}></div>
+                                  <span className={cn(
+                                    "text-[11px] font-bold uppercase tracking-tight",
+                                    topPriority.status === 'In Arbeit' ? "text-blue-400" : 
+                                    topPriority.status === 'Blockiert' ? "text-red-400" : "text-emerald-400"
+                                  )}>
+                                    {topPriority.status || 'Offen'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Aufwand</span>
+                                <span className="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-primary" />
+                                  {topPriority.duration || 'Unbekannt'}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
                           <button 
                             onClick={() => handleTakeToMission(topPriority)}
-                            className="w-full px-6 py-3 bg-primary text-dark font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 group/btn"
+                            className="w-full px-6 py-4 bg-primary text-dark font-black uppercase tracking-tighter rounded-2xl flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 group/btn active:scale-95"
                           >
                             <span>Mission starten</span>
-                            <ArrowUpRight className="w-4 h-4 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
+                            <ArrowUpRight className="w-5 h-5 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
                           </button>
                         </div>
                       </div>
@@ -1465,16 +1810,38 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                         <h3 className="text-xs font-bold text-primary uppercase tracking-[0.2em] flex items-center gap-2">
                           <Target className="w-3 h-3" /> Aktive Mission
                         </h3>
-                        {isMissionLocked && (
-                          <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">
-                            Locked
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleSuggestNextTask}
+                            disabled={isChatting}
+                            className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all border border-primary/20 flex items-center gap-1.5"
+                            title="Nächsten Schritt vorschlagen"
+                          >
+                            <Zap className="w-3 h-3" />
+                            <span className="text-[9px] font-bold uppercase tracking-widest hidden sm:inline">Next Step</span>
+                          </button>
+                          {isMissionLocked && (
+                            <div className="flex items-center gap-1.5">
+                              <Pin className="w-3 h-3 text-emerald-500" />
+                              <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">
+                                Locked
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="relative group/slot">
                         {isMissionLocked ? (
-                          <div className="w-full min-h-[80px] bg-primary/5 border border-primary/20 rounded-2xl p-4 text-sm text-primary font-bold leading-relaxed shadow-lg shadow-primary/5">
-                            {missionInput || 'Keine aktive Mission.'}
+                          <div className="w-full min-h-[80px] bg-primary/5 border border-primary/20 rounded-2xl p-4 shadow-lg shadow-primary/5">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Herkunft: Analyse</span>
+                              <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1">
+                                • <Clock className="w-2 h-2" /> heute
+                              </span>
+                            </div>
+                            <p className="text-sm text-primary font-bold leading-relaxed">
+                              {missionInput || 'Keine aktive Mission.'}
+                            </p>
                           </div>
                         ) : (
                           <textarea
@@ -1500,16 +1867,38 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                       <h3 className="text-xs font-bold text-sky-400 uppercase tracking-[0.2em] flex items-center gap-2">
                         <Brain className="w-3 h-3" /> Pinned Intel
                       </h3>
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                        <AnimatePresence mode="popLayout">
+                          {pinnedIntelItems.map(item => (
+                            <BillboardCard 
+                              key={item.id} 
+                              item={item} 
+                              onRemove={handleRemovePinnedItem}
+                              onTakeToMission={handleTakeBillboardToMission}
+                            />
+                          ))}
+                        </AnimatePresence>
+                        {pinnedIntelItems.length === 0 && (
+                          <div className="text-[10px] text-slate-600 italic p-4 border border-dashed border-white/5 rounded-2xl text-center">
+                            Keine Intel gepinnt.
+                          </div>
+                        )}
+                      </div>
                       <div className="relative">
-                        <textarea
-                          value={pinnedIntel}
-                          onChange={(e) => setPinnedIntel(e.target.value)}
-                          placeholder="Wichtiger Hinweis oder Erkenntnis..."
-                          className="w-full min-h-[80px] bg-sky-400/5 border border-sky-400/20 rounded-2xl p-4 text-sm text-sky-100 placeholder:text-sky-900/50 focus:outline-none focus:border-sky-400/50 transition-all resize-none font-medium"
+                        <input
+                          type="text"
+                          value={intelInput}
+                          onChange={(e) => setIntelInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handlePinItem(intelInput, 'intel')}
+                          placeholder="Intel pinnen..."
+                          className="w-full bg-sky-400/5 border border-sky-400/20 rounded-xl px-4 py-2.5 text-xs text-sky-100 placeholder:text-sky-900/50 focus:outline-none focus:border-sky-400/50 transition-all font-medium"
                         />
-                        <div className="absolute top-4 right-4 text-sky-400/30">
-                          <History className="w-4 h-4" />
-                        </div>
+                        <button 
+                          onClick={() => handlePinItem(intelInput, 'intel')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-sky-400 hover:text-sky-300 transition-colors"
+                        >
+                          <Pin className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -1518,16 +1907,38 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                       <h3 className="text-xs font-bold text-red-400 uppercase tracking-[0.2em] flex items-center gap-2">
                         <AlertCircle className="w-3 h-3" /> Blocker / Warnung
                       </h3>
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                        <AnimatePresence mode="popLayout">
+                          {pinnedBlockerItems.map(item => (
+                            <BillboardCard 
+                              key={item.id} 
+                              item={item} 
+                              onRemove={handleRemovePinnedItem}
+                              onTakeToMission={handleTakeBillboardToMission}
+                            />
+                          ))}
+                        </AnimatePresence>
+                        {pinnedBlockerItems.length === 0 && (
+                          <div className="text-[10px] text-slate-600 italic p-4 border border-dashed border-white/5 rounded-2xl text-center">
+                            Keine Blocker gepinnt.
+                          </div>
+                        )}
+                      </div>
                       <div className="relative">
-                        <textarea
-                          value={pinnedBlocker}
-                          onChange={(e) => setPinnedBlocker(e.target.value)}
-                          placeholder="Gefahren oder Hindernisse..."
-                          className="w-full min-h-[80px] bg-red-400/5 border border-red-400/20 rounded-2xl p-4 text-sm text-red-100 placeholder:text-red-900/50 focus:outline-none focus:border-red-400/50 transition-all resize-none font-medium"
+                        <input
+                          type="text"
+                          value={blockerInput}
+                          onChange={(e) => setBlockerInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handlePinItem(blockerInput, 'blocker')}
+                          placeholder="Blocker pinnen..."
+                          className="w-full bg-red-400/5 border border-red-400/20 rounded-xl px-4 py-2.5 text-xs text-red-100 placeholder:text-red-900/50 focus:outline-none focus:border-red-400/50 transition-all font-medium"
                         />
-                        <div className="absolute top-4 right-4 text-red-400/30">
-                          <Zap className="w-4 h-4" />
-                        </div>
+                        <button 
+                          onClick={() => handlePinItem(blockerInput, 'blocker')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <Pin className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -1591,7 +2002,22 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'GAME CHANGER').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
+                      return (
+                        <BoardCard 
+                          key={item.id} 
+                          item={item} 
+                          pillar={pillar} 
+                          onDelete={handleDeleteSeed} 
+                          onPin={handlePinItem}
+                          onTakeToMission={handleTakeToMission}
+                          onMakeMission={handleMakeMission}
+                          onMoveToVault={handleMoveToVault}
+                          onUpdateVault={handleUpdateVault}
+                          onToggleSelect={toggleSeedSelection}
+                          isSelected={selectedSeeds.some(s => s.id === item.id)}
+                          showNotification={showNotification} 
+                        />
+                      );
                     })}
                   </AnimatePresence>
                 </div>
@@ -1609,7 +2035,22 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'SOLID WORK').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
+                      return (
+                        <BoardCard 
+                          key={item.id} 
+                          item={item} 
+                          pillar={pillar} 
+                          onDelete={handleDeleteSeed} 
+                          onPin={handlePinItem}
+                          onTakeToMission={handleTakeToMission}
+                          onMakeMission={handleMakeMission}
+                          onMoveToVault={handleMoveToVault}
+                          onUpdateVault={handleUpdateVault}
+                          onToggleSelect={toggleSeedSelection}
+                          isSelected={selectedSeeds.some(s => s.id === item.id)}
+                          showNotification={showNotification} 
+                        />
+                      );
                     })}
                   </AnimatePresence>
                 </div>
@@ -1627,7 +2068,22 @@ ${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
                   <AnimatePresence mode="popLayout">
                     {filteredItems.filter(i => i.category === 'NOISE').map(item => {
                       const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                      return <BoardCard key={item.id} item={item} pillar={pillar} onDelete={handleDeleteSeed} showNotification={showNotification} />;
+                      return (
+                        <BoardCard 
+                          key={item.id} 
+                          item={item} 
+                          pillar={pillar} 
+                          onDelete={handleDeleteSeed} 
+                          onPin={handlePinItem}
+                          onTakeToMission={handleTakeToMission}
+                          onMakeMission={handleMakeMission}
+                          onMoveToVault={handleMoveToVault}
+                          onUpdateVault={handleUpdateVault}
+                          onToggleSelect={toggleSeedSelection}
+                          isSelected={selectedSeeds.some(s => s.id === item.id)}
+                          showNotification={showNotification} 
+                        />
+                      );
                     })}
                   </AnimatePresence>
                 </div>
@@ -1771,12 +2227,32 @@ interface BoardCardProps {
   item: AnalyzedItem;
   pillar: Pillar;
   onDelete: (item: AnalyzedItem) => void;
+  onPin: (text: string, type: 'intel' | 'blocker', origin: BillboardItem['origin'], expiry: BillboardItem['expiry']) => void;
+  onTakeToMission: (item: AnalyzedItem) => void;
+  onMakeMission: (item: AnalyzedItem) => void;
+  onMoveToVault: (item: AnalyzedItem) => void;
+  onUpdateVault: (itemId: string, vaultId: AnalyzedItem['vaultId']) => void;
+  onToggleSelect: (item: AnalyzedItem) => void;
+  isSelected: boolean;
   showNotification: (msg: string, type: 'success' | 'warn' | 'info') => void;
   key?: string | number;
 }
 
-function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps) {
+function BoardCard({ 
+  item, 
+  pillar, 
+  onDelete, 
+  onPin, 
+  onTakeToMission, 
+  onMakeMission, 
+  onMoveToVault, 
+  onUpdateVault,
+  onToggleSelect,
+  isSelected,
+  showNotification 
+}: BoardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showVaultSelector, setShowVaultSelector] = useState(false);
   const isNoise = item.category === 'NOISE';
   const isGC = item.category === 'GAME CHANGER';
   const vault = VAULTS.find(v => v.id === item.vaultId);
@@ -1789,7 +2265,7 @@ function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps)
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
       className={cn(
-        "p-4 rounded-2xl border transition-all relative overflow-hidden group backdrop-blur-md",
+        "p-4 rounded-2xl border transition-all relative group backdrop-blur-md",
         isGC ? "bg-slate-800/40 border-primary/20 shadow-lg shadow-primary/5 hover:border-primary/40 text-white" : 
         isNoise ? "bg-slate-950/20 border-white/5 line-through text-slate-600 opacity-50" :
         "bg-slate-900/30 border-white/5 shadow-sm hover:border-white/10 text-slate-200"
@@ -1805,11 +2281,48 @@ function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps)
               {pillar.name}
             </span>
             {vault && (
-              <span 
-                className="text-[9px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-full border border-white/5 bg-white/5 text-slate-400"
+              <div className="relative">
+                <button 
+                  onClick={() => setShowVaultSelector(!showVaultSelector)}
+                  className="text-[9px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-full border border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 transition-all flex items-center gap-1"
+                >
+                  {vault.icon} {vault.name.split(' ')[0]}
+                  <ChevronDown className="w-2 h-2" />
+                </button>
+                
+                {showVaultSelector && (
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-slate-900 border border-white/10 rounded-xl shadow-2xl z-50 p-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {VAULTS.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => {
+                          onUpdateVault(item.id, v.id as any);
+                          setShowVaultSelector(false);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-2",
+                          v.id === item.vaultId ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                        )}
+                      >
+                        <span>{v.icon}</span>
+                        <span>{v.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {item.sourceUrl && (
+              <a 
+                href={item.sourceUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-[9px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-full border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all flex items-center gap-1"
+                title="Original Video ansehen"
               >
-                {vault.icon} {vault.name.split(' ')[0]}
-              </span>
+                <Youtube className="w-2.5 h-2.5" />
+                VIDEO
+              </a>
             )}
           </div>
         </div>
@@ -1882,6 +2395,59 @@ function BoardCard({ item, pillar, onDelete, showNotification }: BoardCardProps)
           <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
         </div>
       )}
+
+      <div className="mt-4 pt-3 border-t border-white/5 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <button 
+          onClick={() => onToggleSelect(item)}
+          className={cn(
+            "p-1.5 rounded-lg transition-all border flex-shrink-0 flex items-center gap-1.5 px-2.5",
+            isSelected 
+              ? "bg-primary text-slate-900 border-primary shadow-lg shadow-primary/20" 
+              : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"
+          )}
+          title={isSelected ? "Aus Chat-Kontext entfernen" : "In Chat-Kontext ziehen"}
+        >
+          <MessageSquare className={cn("w-3.5 h-3.5", isSelected ? "fill-current" : "")} />
+          <span className="text-[10px] font-bold uppercase tracking-wider">
+            {isSelected ? "Im Kontext" : "Kontext"}
+          </span>
+        </button>
+        <button 
+          onClick={() => onTakeToMission(item)}
+          className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all border border-primary/20 flex-shrink-0"
+          title="Zur aktiven Priorität"
+        >
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </button>
+        <button 
+          onClick={() => onPin(item.text, 'intel', 'Seed', 'heute')}
+          className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg hover:bg-emerald-500/20 transition-all border border-emerald-500/20 flex-shrink-0"
+          title="Ins Billboard pinnen"
+        >
+          <Pin className="w-3.5 h-3.5" />
+        </button>
+        <button 
+          onClick={() => onMakeMission(item)}
+          className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg hover:bg-amber-500/20 transition-all border border-amber-500/20 flex-shrink-0"
+          title="Mission daraus erzeugen"
+        >
+          <Target className="w-3.5 h-3.5" />
+        </button>
+        <button 
+          onClick={() => onMoveToVault(item)}
+          className="p-1.5 bg-indigo-500/10 text-indigo-500 rounded-lg hover:bg-indigo-500/20 transition-all border border-indigo-500/20 flex-shrink-0"
+          title="In Vault bestätigen"
+        >
+          <Database className="w-3.5 h-3.5" />
+        </button>
+        <button 
+          onClick={() => onDelete(item)}
+          className="p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0"
+          title="Ignorieren / Löschen"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </motion.div>
   );
 }
