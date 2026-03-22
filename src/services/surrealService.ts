@@ -182,6 +182,14 @@ class SurrealService {
     return await this.db.delete(new StringRecordId(fullId));
   }
 
+  async updateSeed(recordId: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Updating seed in SurrealDB:', recordId);
+    const fullId = recordId.includes(':') ? recordId : `seeds:${recordId}`;
+    // Using merge to only update provided fields
+    return await (this.db as any).merge(new StringRecordId(fullId), data);
+  }
+
   async deleteMission(recordId: string) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     console.log('Deleting mission from SurrealDB:', recordId);
