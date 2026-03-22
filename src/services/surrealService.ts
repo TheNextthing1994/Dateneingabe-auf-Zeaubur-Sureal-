@@ -196,6 +196,55 @@ class SurrealService {
     const fullId = recordId.includes(':') ? recordId : `missions:${recordId}`;
     return await this.db.delete(new StringRecordId(fullId));
   }
+
+  /**
+   * Saves a memory concept using a raw SurrealQL query.
+   */
+  async saveMemoryConcept(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving memory concept to SurrealDB (RAW QUERY):', data.id);
+    return await (this.db as any).query('INSERT INTO memory_concepts ' + JSON.stringify(data));
+  }
+
+  async getMemoryConcepts(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      console.log('Fetching memory concepts from SurrealDB...');
+      const results = await (this.db as any).query('SELECT * FROM memory_concepts');
+      
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      
+      if (!Array.isArray(records)) return [];
+      
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) {
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  async deleteMemoryConcept(recordId: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Deleting memory concept from SurrealDB:', recordId);
+    const fullId = recordId.includes(':') ? recordId : `memory_concepts:${recordId}`;
+    return await this.db.delete(new StringRecordId(fullId));
+  }
+
+  async deleteAllMemoryConcepts() {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Deleting ALL memory concepts from SurrealDB');
+    return await (this.db as any).query('DELETE FROM memory_concepts');
+  }
 }
 
 export const surrealService = new SurrealService();

@@ -51,6 +51,9 @@ import {
   Shuffle,
   Save,
   Volume2,
+  PlayCircle,
+  Car,
+  Sparkles,
   Youtube,
   Check,
   ChevronUp,
@@ -65,7 +68,6 @@ import {
   Lightbulb,
   Rocket,
   Workflow,
-  Sparkles,
   Pin,
   RefreshCw,
   Maximize2,
@@ -159,6 +161,7 @@ interface MemoryConcept {
   term: string;
   definition: string;
   timestamp: number;
+  images?: string[];
 }
 
 const VAULTS = [
@@ -370,8 +373,13 @@ export default function App() {
   const [memoryConcepts, setMemoryConcepts] = useState<MemoryConcept[]>([]);
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
   const [isMemoryInputOpen, setIsMemoryInputOpen] = useState(false);
-  const [newConcept, setNewConcept] = useState({ term: '', definition: '' });
+  const [newConcept, setNewConcept] = useState({ term: '', definition: '', images: '' });
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isAutoPlayActive, setIsAutoPlayActive] = useState(false);
+  const autoPlayRef = useRef(isAutoPlayActive);
+  useEffect(() => { autoPlayRef.current = isAutoPlayActive; }, [isAutoPlayActive]);
+  
   const audioContextRef = useRef<AudioContext | null>(null);
   const [currentMemoryIndex, setCurrentMemoryIndex] = useState(0);
 
@@ -891,18 +899,88 @@ export default function App() {
     }
   };
 
+  const handleGenerateImage = async () => {
+    if (!newConcept.term.trim()) {
+      showNotification('Bitte gib zuerst einen Begriff oder Plan-Titel ein.', 'warn');
+      return;
+    }
+    setIsGeneratingImage(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: getEnv('VITE_GEMINI_API_KEY') });
+      const prompt = `Erstelle eine konzeptionelle Visualisierung (Highlevel Overview) für: "${newConcept.term}". 
+      Fokus: Rationale Grenzenziehung des Begriffs/Plans und strukturelle Klarheit. 
+      Inhalt: ${newConcept.definition || 'Strategische Planung.'}
+      Stil: Nanobanana-Stil (Blueprint, minimalistisch, konzeptionell, modern).`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          imageConfig: {
+            aspectRatio: "16:9",
+          }
+        }
+      });
+
+      const candidate = response.candidates?.[0];
+      if (candidate?.finishReason === 'SAFETY') {
+        throw new Error('Bildgenerierung wurde durch Sicherheitsfilter blockiert. Versuche eine andere Beschreibung.');
+      }
+
+      let imageUrl = '';
+      let textResponse = '';
+      for (const part of candidate?.content?.parts || []) {
+        if (part.inlineData) {
+          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          break;
+        } else if (part.text) {
+          textResponse += part.text;
+        }
+      }
+
+      if (imageUrl) {
+        setNewConcept(prev => ({
+          ...prev,
+          images: prev.images ? `${prev.images}, ${imageUrl}` : imageUrl
+        }));
+        showNotification('KI-Visualisierung generiert!', 'success');
+      } else {
+        console.warn('Model response text:', textResponse);
+        throw new Error(`Kein Bild in der Antwort gefunden.${textResponse ? ' Nachricht: ' + textResponse : ''}`);
+      }
+    } catch (error) {
+      console.error('Image generation error:', error);
+      showNotification('Bildgenerierung fehlgeschlagen.', 'warn');
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
   const handleAddMemoryConcept = () => {
     if (!newConcept.term.trim() || !newConcept.definition.trim()) return;
+    const imagesArray = newConcept.images
+      ? newConcept.images.split(',').map(url => url.trim()).filter(url => url.length > 0)
+      : [];
+    
     const concept: MemoryConcept = {
       id: Date.now().toString(),
       term: newConcept.term,
       definition: newConcept.definition,
+      images: imagesArray,
       timestamp: Date.now()
     };
     const updated = [concept, ...memoryConcepts];
     setMemoryConcepts(updated);
     localStorage.setItem('dt_memory_concepts', JSON.stringify(updated));
-    setNewConcept({ term: '', definition: '' });
+
+    // Save to SurrealDB if connected
+    if (surrealStatus === 'connected') {
+      surrealService.saveMemoryConcept(concept).catch(err => {
+        console.error('Failed to save memory concept to SurrealDB:', err);
+      });
+    }
+
+    setNewConcept({ term: '', definition: '', images: '' });
     setIsMemoryInputOpen(false);
     showNotification('Konzept im Memory Core gespeichert!', 'success');
   };
@@ -911,6 +989,14 @@ export default function App() {
     const updated = memoryConcepts.filter(c => c.id !== id);
     setMemoryConcepts(updated);
     localStorage.setItem('dt_memory_concepts', JSON.stringify(updated));
+
+    // Delete from SurrealDB if connected
+    if (surrealStatus === 'connected') {
+      surrealService.deleteMemoryConcept(id).catch(err => {
+        console.error('Failed to delete memory concept from SurrealDB:', err);
+      });
+    }
+
     if (currentMemoryIndex >= updated.length) {
       setCurrentMemoryIndex(Math.max(0, updated.length - 1));
     }
@@ -921,9 +1007,9 @@ export default function App() {
     setIsSpeaking(true);
     try {
       const ai = new GoogleGenAI({ apiKey: getEnv('VITE_GEMINI_API_KEY') });
-      const prompt = `Sprich den folgenden Begriff und seine Definition klar und deutlich aus: 
-      Begriff: ${concept.term}. 
-      Definition: ${concept.definition}.`;
+      const prompt = `Trage den folgenden Plan oder Begriff klar und deutlich vor: 
+      Titel: ${concept.term}. 
+      Inhalt/Status: ${concept.definition}.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
@@ -940,15 +1026,38 @@ export default function App() {
 
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
-        const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+        // Gemini TTS returns raw PCM (16-bit, 24kHz, Mono)
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         }
-        const buffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+
+        // Convert 16-bit PCM to Float32 for Web Audio API
+        const int16Data = new Int16Array(bytes.buffer);
+        const float32Data = new Float32Array(int16Data.length);
+        for (let i = 0; i < int16Data.length; i++) {
+          float32Data[i] = int16Data[i] / 32768.0;
+        }
+
+        const audioBuffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+        audioBuffer.getChannelData(0).set(float32Data);
+
         const source = audioContextRef.current.createBufferSource();
-        source.buffer = buffer;
+        source.buffer = audioBuffer;
         source.connect(audioContextRef.current.destination);
-        source.onended = () => setIsSpeaking(false);
+        source.onended = () => {
+          setIsSpeaking(false);
+          if (autoPlayRef.current) {
+            setTimeout(() => {
+              setCurrentMemoryIndex(prev => (prev + 1) % memoryConcepts.length);
+            }, 500);
+          }
+        };
         source.start();
       } else {
         setIsSpeaking(false);
@@ -959,6 +1068,12 @@ export default function App() {
       showNotification('Sprachausgabe fehlgeschlagen.', 'warn');
     }
   };
+
+  useEffect(() => {
+    if (isAutoPlayActive && !isSpeaking && memoryConcepts.length > 0) {
+      handleSpeakConcept(memoryConcepts[currentMemoryIndex]);
+    }
+  }, [currentMemoryIndex, isAutoPlayActive, memoryConcepts.length]);
 
   const handleTakeBillboardToMission = (item: BillboardItem) => {
     setMissionInput(item.text);
@@ -1086,6 +1201,20 @@ export default function App() {
       try {
         const storedSeeds = await surrealService.getSeeds();
         console.log('Stored seeds loaded from SurrealDB:', storedSeeds);
+
+        const storedMemoryConcepts = await surrealService.getMemoryConcepts();
+        console.log('Stored memory concepts loaded from SurrealDB:', storedMemoryConcepts);
+
+        if (storedMemoryConcepts && storedMemoryConcepts.length > 0) {
+          setMemoryConcepts(prev => {
+            const combined = [...storedMemoryConcepts, ...prev];
+            const unique = combined.filter((item, index, self) => {
+              const firstIndex = self.findIndex((t) => t.id === item.id);
+              return index === firstIndex;
+            });
+            return unique.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          });
+        }
         
         // Always clear demo data if we are connected to SurrealDB
         setAnalyzedItems(prev => {
@@ -2208,9 +2337,21 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
             <div className="mt-6 pt-6 border-t border-white/5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[11px] font-bold text-slate-400 flex items-center uppercase tracking-wider">
-                  <Brain className="w-3.5 h-3.5 mr-2 text-primary" /> Memory Core
+                  <Brain className="w-3.5 h-3.5 mr-2 text-primary" /> Memory Core (Pläne & Projekte)
                 </h3>
                 <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setIsAutoPlayActive(!isAutoPlayActive)}
+                    className={cn(
+                      "p-1.5 rounded-lg border transition-all",
+                      isAutoPlayActive 
+                        ? "bg-primary/20 border-primary/40 text-primary" 
+                        : "bg-white/5 border-white/5 text-slate-400 hover:text-primary"
+                    )}
+                    title={isAutoPlayActive ? "Auto-Play Deaktivieren" : "Auto-Play Aktivieren (Podcast Modus)"}
+                  >
+                    <Car className="w-3.5 h-3.5" />
+                  </button>
                   <button 
                     onClick={() => {
                       const nextIdx = Math.floor(Math.random() * memoryConcepts.length);
@@ -2223,10 +2364,15 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                   </button>
                   <button 
                     onClick={() => setIsMemoryInputOpen(!isMemoryInputOpen)}
-                    className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 text-slate-400 hover:text-primary transition-all"
-                    title="Neues Konzept hinzufügen"
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider",
+                      isMemoryInputOpen 
+                        ? "bg-primary text-slate-900 border-primary" 
+                        : "bg-white/5 border-white/5 text-slate-400 hover:text-primary"
+                    )}
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3 h-3" />
+                    <span>Neu</span>
                   </button>
                   <button 
                     onClick={() => setIsMemoryModalOpen(true)}
@@ -2254,10 +2400,31 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                   <textarea 
                     value={newConcept.definition}
                     onChange={(e) => setNewConcept(prev => ({ ...prev, definition: e.target.value }))}
-                    placeholder="Definition / Bedeutung..."
-                    rows={2}
+                    placeholder="Plan-Stichpunkte, Status oder Definition..."
+                    rows={3}
                     className="w-full bg-black/20 text-white p-2 rounded-lg border border-white/5 focus:border-primary/50 outline-none text-xs resize-none"
                   />
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={newConcept.images}
+                      onChange={(e) => setNewConcept(prev => ({ ...prev, images: e.target.value }))}
+                      placeholder="Bild-URLs..."
+                      className="flex-1 bg-black/20 text-white p-2 rounded-lg border border-white/5 focus:border-primary/50 outline-none text-xs"
+                    />
+                    <button 
+                      onClick={handleGenerateImage}
+                      disabled={isGeneratingImage || !newConcept.term.trim()}
+                      className={cn(
+                        "px-3 bg-accent/20 hover:bg-accent/30 text-accent rounded-lg border border-accent/30 transition-all flex items-center justify-center disabled:opacity-30",
+                        isGeneratingImage && "animate-pulse"
+                      )}
+                      title="KI-Konzeptbild generieren"
+                    >
+                      {isGeneratingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-slate-500 italic px-1">Tipp: Nutze ✨ für KI-Bilder oder kopiere URLs hier rein.</p>
                   <button 
                     onClick={handleAddMemoryConcept}
                     className="w-full bg-primary text-slate-900 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider flex items-center justify-center gap-2"
@@ -2291,8 +2458,13 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                   
                   <div className="flex items-center gap-2 mb-2">
                     <span className="px-2 py-0.5 bg-primary/20 text-primary text-[8px] font-black rounded-full uppercase tracking-widest">
-                      Concept {currentMemoryIndex + 1}/{memoryConcepts.length}
+                      Eintrag {currentMemoryIndex + 1}/{memoryConcepts.length}
                     </span>
+                    {isAutoPlayActive && (
+                      <span className="flex items-center gap-1 text-[8px] font-bold text-accent uppercase tracking-widest animate-pulse">
+                        <Car className="w-2 h-2" /> Podcast Modus Aktiv
+                      </span>
+                    )}
                   </div>
                   
                   <h4 className="text-sm font-bold text-white mb-2 tracking-tight">
@@ -2301,6 +2473,22 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                   <p className="text-xs text-slate-400 leading-relaxed italic">
                     "{memoryConcepts[currentMemoryIndex].definition}"
                   </p>
+
+                  {memoryConcepts[currentMemoryIndex].images && memoryConcepts[currentMemoryIndex].images!.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {memoryConcepts[currentMemoryIndex].images!.slice(0, 2).map((img, i) => (
+                        <motion.img 
+                          key={i} 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          src={img} 
+                          alt="Concept Visual" 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-20 object-cover rounded-lg border border-white/10 shadow-lg"
+                        />
+                      ))}
+                    </div>
+                  )}
 
                   <div className="mt-4 flex items-center justify-between">
                     <div className="flex gap-1">
@@ -4268,6 +4456,19 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                             <p className="text-sm text-slate-400 leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5 italic">
                               "{concept.definition}"
                             </p>
+                            {concept.images && concept.images.length > 0 && (
+                              <div className="mt-3 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                {concept.images.map((img, i) => (
+                                  <img 
+                                    key={i} 
+                                    src={img} 
+                                    alt="" 
+                                    referrerPolicy="no-referrer"
+                                    className="h-20 w-32 object-cover rounded-xl border border-white/10 flex-shrink-0"
+                                  />
+                                ))}
+                              </div>
+                            )}
                             <div className="mt-3 flex items-center justify-between">
                               <span className="text-[10px] text-slate-600 font-mono uppercase">
                                 Gespeichert am {new Date(concept.timestamp).toLocaleDateString()}
@@ -4279,11 +4480,34 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                     )}
                   </div>
 
-                  <div className="p-6 bg-white/[0.02] border-t border-white/5">
-                    <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-                      <span>Total: {memoryConcepts.length} Konzepte</span>
-                      <span className="text-primary/60">Core Status: Optimal</span>
+                  <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Total: {memoryConcepts.length} Konzepte</span>
+                      <span className="text-primary/60 text-[9px] font-mono uppercase">Core Status: Optimal</span>
                     </div>
+                    {memoryConcepts.length > 0 && (
+                      <button 
+                        onClick={() => {
+                          if (window.confirm('Möchtest du wirklich ALLE Konzepte löschen?')) {
+                            setMemoryConcepts([]);
+                            localStorage.setItem('dt_memory_concepts', JSON.stringify([]));
+                            
+                            // Delete all from SurrealDB if connected
+                            if (surrealStatus === 'connected') {
+                              surrealService.deleteAllMemoryConcepts().catch(err => {
+                                console.error('Failed to delete all memory concepts from SurrealDB:', err);
+                              });
+                            }
+
+                            setCurrentMemoryIndex(0);
+                            showNotification('Memory Core geleert.', 'warn');
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-xl border border-red-500/20 transition-all"
+                      >
+                        Alles Löschen
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               </div>
