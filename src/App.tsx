@@ -164,6 +164,14 @@ interface MemoryConcept {
   images?: string[];
 }
 
+interface WeeklyTask {
+  id: string;
+  rawId?: string;
+  text: string;
+  completed: boolean;
+  timestamp: number;
+}
+
 const VAULTS = [
   { id: 'ideen', name: 'IDEEN DECK', icon: '💡', color: '#8b5cf6' },
   { id: 'projekte', name: 'PROJEKT AKTEN', icon: '📁', color: '#3b82f6' },
@@ -349,6 +357,52 @@ export default function App() {
   const [isAutoPlayActive, setIsAutoPlayActive] = useState(false);
   const autoPlayRef = useRef(isAutoPlayActive);
   useEffect(() => { autoPlayRef.current = isAutoPlayActive; }, [isAutoPlayActive]);
+
+  // Weekly Tasks State
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
+  const [weeklyTaskInput, setWeeklyTaskInput] = useState('');
+
+  const handleAddWeeklyTask = async () => {
+    if (!weeklyTaskInput.trim()) return;
+    const newTask: WeeklyTask = {
+      id: `weekly_${Date.now()}`,
+      text: weeklyTaskInput,
+      completed: false,
+      timestamp: Date.now()
+    };
+    setWeeklyTasks(prev => [newTask, ...prev]);
+    setWeeklyTaskInput('');
+    if (surrealStatus === 'connected') {
+      try {
+        await surrealService.saveWeeklyTask(newTask);
+      } catch (err) {
+        console.error('Error saving weekly task:', err);
+      }
+    }
+  };
+
+  const handleToggleWeeklyTask = async (task: WeeklyTask) => {
+    const updated = { ...task, completed: !task.completed };
+    setWeeklyTasks(prev => prev.map(t => t.id === task.id ? updated : t));
+    if (surrealStatus === 'connected' && task.rawId) {
+      try {
+        await surrealService.updateWeeklyTask(task.rawId, { completed: updated.completed });
+      } catch (err) {
+        console.error('Error updating weekly task:', err);
+      }
+    }
+  };
+
+  const handleDeleteWeeklyTask = async (task: WeeklyTask) => {
+    setWeeklyTasks(prev => prev.filter(t => t.id !== task.id));
+    if (surrealStatus === 'connected' && task.rawId) {
+      try {
+        await surrealService.deleteWeeklyTask(task.rawId);
+      } catch (err) {
+        console.error('Error deleting weekly task:', err);
+      }
+    }
+  };
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const [currentMemoryIndex, setCurrentMemoryIndex] = useState(0);
@@ -1211,6 +1265,12 @@ export default function App() {
         console.log('Loading missions...');
         const missions = await surrealService.getMissions();
         console.log('Missions loaded:', missions?.length || 0);
+
+        // Load weekly tasks
+        const storedWeeklyTasks = await surrealService.getWeeklyTasks();
+        if (storedWeeklyTasks && storedWeeklyTasks.length > 0) {
+          setWeeklyTasks(storedWeeklyTasks);
+        }
         
         if (missions && missions.length > 0) {
           // Sort by timestamp to get the latest
@@ -2598,6 +2658,77 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
                           </button>
                         );
                       })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-primary" />
+                      WÖCHENTLICHE ROADMAP
+                    </h2>
+                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">
+                      Wochen-Fokus
+                    </span>
+                  </div>
+                  
+                  <div className="bg-panel/30 backdrop-blur-md border border-white/5 rounded-3xl p-6">
+                    <div className="flex gap-2 mb-4">
+                      <input 
+                        type="text"
+                        value={weeklyTaskInput}
+                        onChange={(e) => setWeeklyTaskInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddWeeklyTask()}
+                        placeholder="Neues Wochenziel hinzufügen..."
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50 transition-all"
+                      />
+                      <button 
+                        onClick={handleAddWeeklyTask}
+                        className="p-2 bg-primary text-dark rounded-xl hover:bg-primary/90 transition-all"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {weeklyTasks.length > 0 ? (
+                        weeklyTasks.map(task => (
+                          <div 
+                            key={task.id}
+                            className={cn(
+                              "flex items-center gap-3 p-3 rounded-xl border transition-all group",
+                              task.completed ? "bg-emerald-500/5 border-emerald-500/20" : "bg-white/5 border-white/5 hover:border-white/10"
+                            )}
+                          >
+                            <button 
+                              onClick={() => handleToggleWeeklyTask(task)}
+                              className={cn(
+                                "w-5 h-5 rounded-md border flex items-center justify-center transition-all",
+                                task.completed ? "bg-emerald-500 border-emerald-500 text-dark" : "border-white/20 hover:border-primary/50"
+                              )}
+                            >
+                              {task.completed && <Check className="w-3.5 h-3.5" />}
+                            </button>
+                            <span className={cn(
+                              "flex-1 text-sm transition-all",
+                              task.completed ? "text-emerald-400/50 line-through" : "text-slate-200"
+                            )}>
+                              {task.text}
+                            </span>
+                            <button 
+                              onClick={() => handleDeleteWeeklyTask(task)}
+                              className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8 text-slate-500 italic text-sm">
+                          Keine Wochenziele definiert. Plane deine Woche für maximale Klarheit.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

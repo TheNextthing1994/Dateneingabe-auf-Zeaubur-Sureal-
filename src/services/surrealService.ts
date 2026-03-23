@@ -198,6 +198,48 @@ class SurrealService {
   }
 
   /**
+   * Saves a weekly task using a raw SurrealQL query.
+   */
+  async saveWeeklyTask(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving weekly task to SurrealDB (RAW QUERY):', data.id);
+    return await (this.db as any).query('INSERT INTO weekly_tasks ' + JSON.stringify(data));
+  }
+
+  async getWeeklyTasks(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM weekly_tasks');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      throw err;
+    }
+  }
+
+  async updateWeeklyTask(recordId: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `weekly_tasks:${recordId}`;
+    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
+  async deleteWeeklyTask(recordId: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `weekly_tasks:${recordId}`;
+    return await this.db.delete(new StringRecordId(fullId));
+  }
+
+  /**
    * Saves a memory concept using a raw SurrealQL query.
    */
   async saveMemoryConcept(data: any) {
