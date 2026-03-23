@@ -279,38 +279,8 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 
 export default function App() {
   const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map'>('kern');
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: 'initial',
-      sender: 'System',
-      text: 'Bereit für deinen Input. Ich bewerte alles auf einer Skala von 1-10 und filtere nach den 5 Säulen.',
-      timestamp: Date.now()
-    }
-  ]);
-  const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([
-    // Cluster 1: Finance / Business
-    { id: 'f1', text: 'E-Commerce Skalierung Strategie', score: 9.5, pillarId: 'finance', vaultId: 'projekte', category: 'GAME CHANGER', timestamp: Date.now() - 100000, status: 'In Arbeit', reasoning: 'Hohes Skalierungspotenzial durch Automatisierung.', nextStep: 'FB Ads Kampagne starten' },
-    { id: 'f2', text: 'Cashflow Optimierung für Q3', score: 8.2, pillarId: 'finance', vaultId: 'workflows', category: 'SOLID WORK', timestamp: Date.now() - 200000, status: 'Offen' },
-    { id: 'f3', text: 'Investitionsplan Krypto/Aktien', score: 7.8, pillarId: 'finance', vaultId: 'ideen', category: 'SOLID WORK', timestamp: Date.now() - 300000 },
-    { id: 'f4', text: 'Steuerberater Termin vorbereiten', score: 5.4, pillarId: 'finance', vaultId: 'erkenntnisse', category: 'NOISE', timestamp: Date.now() - 400000 },
-    
-    // Cluster 2: Health / Mindset
-    { id: 'h1', text: 'Morgenroutine: 5 Uhr Club', score: 9.2, pillarId: 'health', vaultId: 'workflows', category: 'GAME CHANGER', timestamp: Date.now() - 500000, status: 'In Arbeit' },
-    { id: 'h2', text: 'Intervallfasten 16:8 Protokoll', score: 8.5, pillarId: 'health', vaultId: 'erkenntnisse', category: 'SOLID WORK', timestamp: Date.now() - 600000 },
-    { id: 'h3', text: 'Krafttraining Split-Plan', score: 7.9, pillarId: 'health', vaultId: 'projekte', category: 'SOLID WORK', timestamp: Date.now() - 700000 },
-    { id: 'm1', text: 'Stoizismus im Alltag anwenden', score: 8.8, pillarId: 'mindset', vaultId: 'erkenntnisse', category: 'SOLID WORK', timestamp: Date.now() - 800000 },
-    
-    // Cluster 3: Islam / Dev
-    { id: 'i1', text: 'Arabisch Lernen: Level 1', score: 9.0, pillarId: 'islam', vaultId: 'projekte', category: 'GAME CHANGER', timestamp: Date.now() - 900000, status: 'In Arbeit' },
-    { id: 'i2', text: 'Tafsir Studium: Sure Al-Baqarah', score: 8.4, pillarId: 'islam', vaultId: 'erkenntnisse', category: 'SOLID WORK', timestamp: Date.now() - 1000000 },
-    { id: 'd1', text: 'Deep Work Fokus-Techniken', score: 9.4, pillarId: 'dev', vaultId: 'workflows', category: 'GAME CHANGER', timestamp: Date.now() - 1100000 },
-    { id: 'd2', text: 'Bücherliste 2024: Strategie', score: 7.2, pillarId: 'dev', vaultId: 'ideen', category: 'SOLID WORK', timestamp: Date.now() - 1200000 },
-
-    // Connections / Missions
-    { id: 'mi1', text: 'Launch Website Projekt', score: 10, pillarId: 'finance', vaultId: 'ziele', category: 'GAME CHANGER', timestamp: Date.now() - 1300000, missionType: 'Bauen', status: 'In Arbeit' },
-    { id: 'mi2', text: 'Wöchentlicher Review Prozess', score: 8.1, pillarId: 'dev', vaultId: 'workflows', category: 'SOLID WORK', timestamp: Date.now() - 1400000, missionType: 'Planen' },
-    { id: 'w1', text: 'Content Creation Pipeline', score: 8.3, pillarId: 'finance', vaultId: 'workflows', category: 'SOLID WORK', timestamp: Date.now() - 1500000 }
-  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<{ id: number; msg: string; type: 'success' | 'warn' | 'info' }[]>([]);
   
@@ -1147,14 +1117,7 @@ export default function App() {
     if (savedMemoryConcepts) {
       setMemoryConcepts(JSON.parse(savedMemoryConcepts));
     } else {
-      // Default concept
-      const defaultConcept: MemoryConcept = {
-        id: 'default-1',
-        term: 'Highlevel Overview',
-        definition: 'Eine Methode, um hochkomplexe Systeme auf ihre absolute Essenz herunterzubrechen. Fokus auf das "Was" und "Warum", Ausblenden des "Wie".',
-        timestamp: Date.now()
-      };
-      setMemoryConcepts([defaultConcept]);
+      setMemoryConcepts([]);
     }
   }, []);
 

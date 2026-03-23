@@ -28,10 +28,51 @@ async function startServer() {
         parts: transcript.length
       });
     } catch (error: any) {
-      console.error('Error fetching transcript:', error);
+      const errorMessage = error.message || String(error);
+      console.warn(`Transcript fetch failed for ${videoUrl}:`, errorMessage);
+      
+      let title = '';
+      let description = '';
+      
+      // Try to extract title from error message if possible (YoutubeTranscript library sometimes includes it)
+      const titleMatchFromError = errorMessage.match(/\((.*)\)$/);
+      if (titleMatchFromError) {
+        title = titleMatchFromError[1];
+      }
+
+      try {
+        // Fallback: Fetch the page and try to extract title/description
+        const response = await fetch(videoUrl);
+        const html = await response.text();
+        
+        if (!title) {
+          const titleMatch = html.match(/<title>(.*?)<\/title>/);
+          if (titleMatch) {
+            title = titleMatch[1].replace(' - YouTube', '');
+          }
+        }
+        
+        // Try to find description in the HTML
+        const descriptionMatch = html.match(/"shortDescription":"(.*?)"/);
+        if (descriptionMatch) {
+          description = descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        }
+      } catch (fallbackErr) {
+        console.error('Metadata fallback failed:', fallbackErr);
+      }
+
+      if (title || description) {
+        return res.json({ 
+          transcript: `[TRANSKRIPT DEAKTIVIERT]\n\nTITEL: ${title}\n\nBESCHREIBUNG: ${description}`,
+          parts: 0,
+          isMetadataOnly: true,
+          title
+        });
+      }
+
       res.status(500).json({ 
         error: 'Failed to fetch transcript', 
-        details: error.message 
+        details: errorMessage 
       });
     }
   });

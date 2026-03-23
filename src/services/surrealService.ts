@@ -15,6 +15,10 @@ class SurrealService {
   async connect(config: SurrealConfig) {
     const db = new Surreal();
     try {
+      if (!config.url || !config.url.trim()) {
+        throw new Error('SurrealDB URL is required');
+      }
+
       let url = config.url.trim();
       // Ensure URL uses wss/ws for SDK
       if (url.startsWith('https://')) url = url.replace('https://', 'wss://');
@@ -25,27 +29,53 @@ class SurrealService {
       await db.connect(url);
       console.log('Socket connected');
 
-      console.log('Connection parameters:', {
-        ns: config.ns || 'test',
-        db: config.db || 'test',
-        user: config.user,
-        hasPass: !!config.pass
+      const ns = config.ns || 'test';
+      const dbName = config.db || 'test';
+
+      console.log('Setting initial namespace/database context:', ns, dbName);
+      // Provide both short and long forms for maximum compatibility
+      await (db as any).use({ 
+        ns,
+        db: dbName,
+        namespace: ns, 
+        database: dbName 
       });
 
       if (config.user && config.pass) {
-        console.log('Attempting ROOT signin for user:', config.user);
-        // For ROOT level authentication in SurrealDB 3.0, signin must have ONLY username and password
-        await (db as any).signin({
-          username: config.user,
-          password: config.pass,
-        });
-        console.log('Signin successful');
+        console.log('Attempting authentication for user:', config.user);
+        try {
+          // Try Root level authentication first (most common for dev setups)
+          await (db as any).signin({
+            user: config.user,
+            pass: config.pass
+          });
+          console.log('Root authentication successful');
+        } catch (rootAuthErr) {
+          console.warn('Root authentication failed, trying Database level authentication...', rootAuthErr);
+          try {
+            // Fallback to Database level authentication
+            await (db as any).signin({
+              user: config.user,
+              pass: config.pass,
+              namespace: ns,
+              database: dbName
+            });
+            console.log('Database authentication successful');
+          } catch (dbAuthErr) {
+            console.error('All authentication levels failed:', dbAuthErr);
+            throw new Error('Authentication failed: Please check your credentials and access levels.');
+          }
+        }
+      } else {
+        console.warn('No credentials provided. Proceeding with anonymous access.');
       }
 
-      console.log('Setting namespace/database:', config.ns, config.db);
+      // Final context check
       await (db as any).use({ 
-        ns: config.ns || 'test', 
-        db: config.db || 'test' 
+        ns,
+        db: dbName,
+        namespace: ns, 
+        database: dbName 
       });
       
       // Close existing connection if any
