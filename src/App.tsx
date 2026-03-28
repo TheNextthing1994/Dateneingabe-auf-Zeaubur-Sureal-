@@ -85,14 +85,9 @@ import {
   Info,
   MousePointer2 as MouseSquare
 } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { cn } from './lib/utils';
 import * as d3 from 'd3';
-
-// Utility for tailwind classes
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { LiveMode } from './components/LiveMode';
 
 ChartJS.register(
   RadialLinearScale,
@@ -286,7 +281,7 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map'>('kern');
+  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live'>('kern');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
@@ -2074,6 +2069,17 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
               )}
             >
               MAP
+            </button>
+            <button 
+              onClick={() => setActiveView('live')}
+              className={cn(
+                "px-5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeView === 'live' 
+                  ? "bg-red-500 text-white shadow-lg shadow-red-500/20" 
+                  : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              LIVE
             </button>
           </div>
         </div>
@@ -4354,6 +4360,16 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
         </AnimatePresence>
       </div>
 
+      {/* Mobile Live FAB */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-[90]">
+        <button 
+          onClick={() => setActiveView('live')}
+          className="w-14 h-14 bg-red-500 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all border-4 border-dark"
+        >
+          <Activity className="w-6 h-6 animate-pulse" />
+        </button>
+      </div>
+
       {/* Notifications */}
           <div className="fixed top-4 right-4 space-y-2 z-50">
             <AnimatePresence>
@@ -4374,6 +4390,16 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
               ))}
             </AnimatePresence>
           </div>
+
+          {/* Live Mode Modal */}
+          <AnimatePresence>
+            {activeView === 'live' && (
+              <LiveMode 
+                analyzedItems={analyzedItems} 
+                onClose={() => setActiveView('kern')} 
+              />
+            )}
+          </AnimatePresence>
 
           {/* SurrealDB Connection Modal */}
           <AnimatePresence>
