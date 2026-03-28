@@ -281,7 +281,7 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live'>('kern');
+  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live'>('live');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
@@ -2025,22 +2025,22 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
   };
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+4rem)] lg:pb-0 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Top Navigation */}
-      <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0">
-        <div className="flex items-center gap-8">
+      <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
+        <div className="flex items-center gap-3 sm:gap-8">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-primary/20 rounded-lg border border-primary/30">
               <Brain className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-black text-sm tracking-tighter text-white uppercase">D.T. KERN</span>
+            <span className="hidden sm:inline font-black text-sm tracking-tighter text-white uppercase">D.T. KERN</span>
           </div>
           
-          <div className="flex items-center bg-white/[0.03] rounded-xl p-1 border border-white/5">
+          <div className="hidden lg:flex items-center bg-white/[0.03] rounded-xl p-0.5 sm:p-1 border border-white/5">
             <button 
               onClick={() => setActiveView('kern')}
               className={cn(
-                "px-5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
                 activeView === 'kern' 
                   ? "bg-primary text-slate-900 shadow-lg shadow-primary/20" 
                   : "text-slate-500 hover:text-slate-300"
@@ -2051,7 +2051,7 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
             <button 
               onClick={() => setActiveView('vault')}
               className={cn(
-                "px-5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
                 activeView === 'vault' 
                   ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
                   : "text-slate-500 hover:text-slate-300"
@@ -2062,7 +2062,7 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
             <button 
               onClick={() => setActiveView('map')}
               className={cn(
-                "px-5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
                 activeView === 'map' 
                   ? "bg-amber-500 text-slate-900 shadow-lg shadow-amber-500/20" 
                   : "text-slate-500 hover:text-slate-300"
@@ -2073,7 +2073,7 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
             <button 
               onClick={() => setActiveView('live')}
               className={cn(
-                "px-5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
                 activeView === 'live' 
                   ? "bg-red-500 text-white shadow-lg shadow-red-500/20" 
                   : "text-slate-500 hover:text-slate-300"
@@ -2084,8 +2084,8 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-4 px-3 py-1.5 bg-white/[0.02] rounded-lg border border-white/5">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="hidden sm:flex items-center gap-4 px-3 py-1.5 bg-white/[0.02] rounded-lg border border-white/5">
             <p className="text-[9px] text-primary/80 font-bold uppercase tracking-widest flex items-center">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-2"></span>
               System Online
@@ -3275,7 +3275,7 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
               <div className="flex-1 flex overflow-hidden">
                 
                 {/* 1. LEFT COLUMN: FILTERS */}
-                <aside className="w-72 border-r border-white/5 flex flex-col bg-slate-900/10">
+                <aside className="hidden lg:flex w-72 border-r border-white/5 flex-col bg-slate-900/10">
                   <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
                     
                     {/* Filter: Typ */}
@@ -3813,7 +3813,7 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
             >
               <div className="flex-1 flex overflow-hidden relative">
                 {/* Map Control Panel (Left) */}
-                <aside className="w-72 border-r border-white/5 bg-slate-900/40 flex flex-col">
+                <aside className="hidden lg:flex w-72 border-r border-white/5 bg-slate-900/40 flex-col">
                   <div className="p-6 border-b border-white/5">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                       <Filter className="w-3 h-3" /> Map-Steuerung
@@ -4400,6 +4400,50 @@ ${pinnedBlockerItems.length > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}]
               />
             )}
           </AnimatePresence>
+
+          {/* Mobile Bottom Navigation */}
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-xl border-t border-white/10 flex items-center justify-around px-6 z-50 pb-[env(safe-area-inset-bottom)]">
+            <button 
+              onClick={() => setActiveView('kern')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                activeView === 'kern' ? "text-primary" : "text-slate-500"
+              )}
+            >
+              <Brain className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Kern</span>
+            </button>
+            <button 
+              onClick={() => setActiveView('vault')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                activeView === 'vault' ? "text-indigo-400" : "text-slate-500"
+              )}
+            >
+              <Database className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Vault</span>
+            </button>
+            <button 
+              onClick={() => setActiveView('map')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                activeView === 'map' ? "text-amber-400" : "text-slate-500"
+              )}
+            >
+              <MapIcon className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Map</span>
+            </button>
+            <button 
+              onClick={() => setActiveView('live')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                activeView === 'live' ? "text-red-500" : "text-slate-500"
+              )}
+            >
+              <Activity className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Live</span>
+            </button>
+          </div>
 
           {/* SurrealDB Connection Modal */}
           <AnimatePresence>

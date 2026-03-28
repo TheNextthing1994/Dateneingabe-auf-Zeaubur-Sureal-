@@ -20,11 +20,14 @@ import { cn } from '../lib/utils';
 
 interface AnalyzedItem {
   id: string;
+  vaultId: string;
   text: string;
   score: number;
+  category?: string;
   status?: 'Offen' | 'In Arbeit' | 'Blockiert';
   timestamp: number;
   isArchived?: boolean;
+  blockedBy?: string;
 }
 
 interface LiveModeProps {
@@ -44,6 +47,8 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const isActiveRef = useRef(false);
+  const isMutedRef = useRef(false);
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const [volume, setVolume] = useState<number[]>(new Array(12).fill(10));
@@ -129,7 +134,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
       processorRef.current = inputContextRef.current.createScriptProcessor(4096, 1, 1);
       
       processorRef.current.onaudioprocess = (e) => {
-        if (isMuted || status !== 'active' || !sessionRef.current) return;
+        if (isMutedRef.current || !isActiveRef.current || !sessionRef.current) return;
         
         // Update visualization
         if (analyserRef.current) {
@@ -158,23 +163,60 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
       inputSource.connect(processorRef.current);
       processorRef.current.connect(inputContextRef.current.destination);
 
+      const gameChangers = analyzedItems
+        .filter(i => i.category === 'GAME CHANGER' && !i.isArchived)
+        .slice(0, 5)
+        .map(i => `• [${i.vaultId.toUpperCase()}] ${i.text.slice(0, 80)} (Score: ${i.score.toFixed(1)}, Status: ${i.status || 'Offen'})`)
+        .join('\n');
+
+      const inProgress = analyzedItems
+        .filter(i => i.status === 'In Arbeit')
+        .slice(0, 5)
+        .map(i => `• [${i.vaultId.toUpperCase()}] ${i.text.slice(0, 80)}`)
+        .join('\n');
+
+      const untouched = analyzedItems
+        .filter(i => i.status === 'Offen' && !i.isArchived)
+        .slice(0, 8)
+        .map(i => `• [${i.vaultId.toUpperCase()}] ${i.text.slice(0, 80)}`)
+        .join('\n');
+
+      const blocked = analyzedItems
+        .filter(i => i.status === 'Blockiert')
+        .slice(0, 5)
+        .map(i => `• ${i.text.slice(0, 80)} ${i.blockedBy ? '— Blockiert durch: ' + i.blockedBy : ''}`)
+        .join('\n');
+
+      const systemInstruction = `Du bist D.T. Kern, der strategische digitale Zwilling des Nutzers.
+Der Nutzer hat ADHS und verliert oft den Fokus. Deine Aufgabe: ihn durch seine echten Projekte und Ideen führen, konkret und direkt.
+Antworte immer auf Deutsch. Halte Antworten kurz (max 20 Sekunden Sprechzeit).
+
+=== SEED DATENBANK (STAND JETZT) ===
+Gesamt: ${stats.total} Seeds | Diese Woche neu: ${stats.weekly} | Abgeschlossen: ${stats.completed}
+
+🔥 GAME CHANGER (Top-Priorität):
+${gameChangers || 'Keine vorhanden'}
+
+🚀 IN ARBEIT:
+${inProgress || 'Nichts aktiv'}
+
+🛑 BLOCKIERT:
+${blocked || 'Keine Blocker'}
+
+🌱 UNBERÜHRT (vergessene Ideen — hier schlummert Gold):
+${untouched || 'Alle Seeds bearbeitet'}
+
+Wenn der Nutzer spricht, beziehe dich immer auf seine ECHTEN Seeds oben.
+Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
+
+      console.log("SystemInstruction length:", systemInstruction.length);
+
       // Connect to Gemini Live
       const session = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: `Du bist D.T. Kern, ein strategischer digitaler Zwilling. 
-          Deine Aufgabe ist es, den Nutzer (der ADHS hat und oft den Fokus verliert) durch seine Projekte und Ideen (Seeds) zu führen.
-          Hier ist der aktuelle Status der Datenbank:
-          - Gesamtanzahl Seeds: ${stats.total}
-          - Diese Woche neu aufgenommen: ${stats.weekly}
-          - In Arbeit: ${stats.inProgress}
-          - Unberührt (Offen): ${stats.untouched}
-          - Abgeschlossen: ${stats.completed}
-          
-          Gehe mit dem Nutzer die Seeds durch. Erinnere ihn an gute Ideen, die er vielleicht vergessen hat (unberührte Seeds). 
-          Sei motivierend, direkt und strukturiert. Hilf ihm, das Chaos zu bändigen.
-          Antworte immer auf Deutsch.`,
+          systemInstruction,
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
           },
@@ -185,6 +227,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
         callbacks: {
           onopen: () => {
             setStatus('active');
+            isActiveRef.current = true;
             console.log("Live session opened");
           },
           onmessage: async (message: LiveServerMessage) => {
@@ -218,6 +261,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
             console.error("Live error:", err);
             setError("Verbindung verloren oder Fehler aufgetreten.");
             setStatus('error');
+            isActiveRef.current = false;
           }
         }
       });
@@ -277,6 +321,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
   const cleanup = () => {
     if (isCleaningUpRef.current) return;
     isCleaningUpRef.current = true;
+    isActiveRef.current = false;
     
     stopAllAudio();
     if (streamRef.current) {
@@ -308,6 +353,8 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
     streamRef.current = null;
     sessionRef.current = null;
     isCleaningUpRef.current = false;
+    setIsMuted(false);
+    isMutedRef.current = false;
     setVolume(new Array(12).fill(10));
   };
 
@@ -345,52 +392,52 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
         <X className="w-6 h-6" />
       </button>
 
-      <div className="w-full max-w-md space-y-12 text-center">
-        <div className="space-y-4">
+      <div className="w-full max-w-md space-y-8 sm:space-y-12 text-center px-4">
+        <div className="space-y-3 sm:space-y-4">
           <div className={cn(
-            "w-24 h-24 mx-auto rounded-full flex items-center justify-center border-2 transition-all duration-500",
+            "w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-full flex items-center justify-center border-2 transition-all duration-500",
             status === 'active' ? "border-primary bg-primary/10 shadow-[0_0_40px_rgba(16,185,129,0.2)]" : "border-white/10 bg-white/5"
           )}>
             {status === 'connecting' ? (
-              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-spin" />
             ) : status === 'active' ? (
-              <Activity className="w-10 h-10 text-primary animate-pulse" />
+              <Activity className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
             ) : (
-              <Brain className="w-10 h-10 text-slate-500" />
+              <Brain className="w-8 h-8 sm:w-10 sm:h-10 text-slate-500" />
             )}
           </div>
-          <h2 className="text-2xl font-black tracking-tighter text-white uppercase">D.T. KERN LIVE</h2>
-          <p className="text-sm text-slate-400 font-medium">Strategische Analyse & Fokus-Support</p>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white uppercase">D.T. KERN LIVE</h2>
+          <p className="text-xs sm:text-sm text-slate-400 font-medium">Strategische Analyse & Fokus-Support</p>
         </div>
 
         {status === 'idle' && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-8"
+            className="space-y-6 sm:space-y-8"
           >
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seeds Gesamt</p>
-                <p className="text-xl font-bold text-white">{stats.total}</p>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seeds Gesamt</p>
+                <p className="text-lg sm:text-xl font-bold text-white">{stats.total}</p>
               </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Neu (Woche)</p>
-                <p className="text-xl font-bold text-primary">{stats.weekly}</p>
+              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Neu (Woche)</p>
+                <p className="text-lg sm:text-xl font-bold text-primary">{stats.weekly}</p>
               </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">In Arbeit</p>
-                <p className="text-xl font-bold text-indigo-400">{stats.inProgress}</p>
+              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">In Arbeit</p>
+                <p className="text-lg sm:text-xl font-bold text-indigo-400">{stats.inProgress}</p>
               </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unberührt</p>
-                <p className="text-xl font-bold text-amber-400">{stats.untouched}</p>
+              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unberührt</p>
+                <p className="text-lg sm:text-xl font-bold text-amber-400">{stats.untouched}</p>
               </div>
             </div>
             
             <button 
               onClick={startSession}
-              className="w-full bg-primary text-dark font-black py-4 rounded-2xl text-sm uppercase tracking-[0.2em] shadow-xl shadow-primary/20 active:scale-95 transition-all"
+              className="w-full bg-primary text-dark font-black py-4 rounded-2xl text-xs sm:text-sm uppercase tracking-[0.2em] shadow-xl shadow-primary/20 active:scale-95 transition-all"
             >
               MISSION STARTEN
             </button>
@@ -398,36 +445,36 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
         )}
 
         {status === 'active' && (
-          <div className="space-y-8">
-            <div className="h-32 flex items-center justify-center gap-1">
+          <div className="space-y-6 sm:space-y-8">
+            <div className="h-24 sm:h-32 flex items-center justify-center gap-1">
               {volume.map((v, i) => (
                 <motion.div 
                   key={i}
                   animate={{ 
-                    height: v,
+                    height: v * 0.8, // Scale down for mobile
                   }}
                   transition={{ 
                     type: "spring",
                     stiffness: 300,
                     damping: 20
                   }}
-                  className="w-1.5 bg-primary rounded-full"
+                  className="w-1 sm:w-1.5 bg-primary rounded-full"
                 />
               ))}
             </div>
 
-            <div className="bg-white/5 p-6 rounded-3xl border border-white/10 min-h-[120px] flex flex-col justify-center gap-2">
+            <div className="bg-white/5 p-4 sm:p-6 rounded-3xl border border-white/10 min-h-[100px] sm:min-h-[120px] flex flex-col justify-center gap-2">
               {transcript.length > 0 ? (
                 transcript.map((line, i) => (
                   <p key={i} className={cn(
-                    "text-sm leading-relaxed",
+                    "text-xs sm:text-sm leading-relaxed",
                     line.startsWith('Du:') ? "text-primary/70 font-medium" : "text-slate-200 italic"
                   )}>
                     {line}
                   </p>
                 ))
               ) : (
-                <p className="text-xs text-slate-500 animate-pulse uppercase tracking-widest text-center">Höre zu...</p>
+                <p className="text-[10px] sm:text-xs text-slate-500 animate-pulse uppercase tracking-widest text-center">Höre zu...</p>
               )}
             </div>
 
@@ -440,7 +487,11 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
 
             <div className="flex items-center justify-center gap-6">
               <button 
-                onClick={() => setIsMuted(!isMuted)}
+                onClick={() => {
+                  const newMuted = !isMuted;
+                  setIsMuted(newMuted);
+                  isMutedRef.current = newMuted;
+                }}
                 className={cn(
                   "p-4 rounded-full border transition-all",
                   isMuted ? "bg-red-500/20 border-red-500 text-red-500" : "bg-white/5 border-white/10 text-slate-400"
