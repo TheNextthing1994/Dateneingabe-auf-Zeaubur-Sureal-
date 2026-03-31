@@ -14,9 +14,10 @@ import {
   Clock,
   X
 } from 'lucide-react';
-import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
 import { cn } from '../lib/utils';
+import { LiquidMetal } from './LiquidMetal';
 
 interface AnalyzedItem {
   id: string;
@@ -28,18 +29,29 @@ interface AnalyzedItem {
   timestamp: number;
   isArchived?: boolean;
   blockedBy?: string;
+  pillarId?: string;
 }
 
 interface LiveModeProps {
   analyzedItems: AnalyzedItem[];
-  onClose: () => void;
+  onClose: (transcript?: string[]) => void;
+  onSaveTranscript: (transcript: string[]) => void;
+  onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
+  onSaveWeeklyTask?: (text: string) => Promise<void>;
+  onMessage?: (sender: 'User' | 'D.T. Kern', text: string) => void;
 }
 
-export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) => {
+export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose, onSaveTranscript, onSaveItem, onSaveWeeklyTask, onMessage }) => {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
   const [isMuted, setIsMuted] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [connectTimeout, setConnectTimeout] = useState<NodeJS.Timeout | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -48,6 +60,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const isActiveRef = useRef(false);
+  const isInterruptedRef = useRef(false);
   const isMutedRef = useRef(false);
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
@@ -56,14 +69,14 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
   const stats = React.useMemo(() => {
     const now = Date.now();
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const weeklySeeds = analyzedItems.filter(item => item.timestamp > oneWeekAgo);
+    const weeklySeeds = (analyzedItems || []).filter(item => item.timestamp > oneWeekAgo);
     
     return {
-      total: analyzedItems.length,
+      total: analyzedItems?.length || 0,
       weekly: weeklySeeds.length,
-      inProgress: analyzedItems.filter(i => i.status === 'In Arbeit').length,
-      untouched: analyzedItems.filter(i => i.status === 'Offen' && !i.isArchived).length,
-      completed: analyzedItems.filter(i => i.isArchived).length
+      inProgress: (analyzedItems || []).filter(i => i.status === 'In Arbeit').length,
+      untouched: (analyzedItems || []).filter(i => i.status === 'Offen' && !i.isArchived).length,
+      completed: (analyzedItems || []).filter(i => i.isArchived).length
     };
   }, [analyzedItems]);
 
@@ -77,8 +90,19 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
   };
 
   const startSession = async () => {
+    setIsStarting(true);
     setStatus('connecting');
     setError(null);
+    
+    // Set a timeout for connection
+    const timeout = setTimeout(() => {
+      if (isActiveRef.current === false) {
+        setError("Die Verbindung dauert länger als erwartet. Bitte versuchen Sie es erneut.");
+        setStatus('error');
+        setIsStarting(false);
+      }
+    }, 15000);
+    setConnectTimeout(timeout);
     
     try {
       const apiKey = getEnv('VITE_GEMINI_API_KEY');
@@ -191,6 +215,17 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose }) =>
 Der Nutzer hat ADHS und verliert oft den Fokus. Deine Aufgabe: ihn durch seine echten Projekte und Ideen führen, konkret und direkt.
 Antworte immer auf Deutsch. Halte Antworten kurz (max 20 Sekunden Sprechzeit).
 
+DEINE NEUE FÄHIGKEIT:
+Du kannst jetzt Erkenntnisse, Ideen oder Projekte DIREKT in den Vault (SurrealDB) speichern.
+Nutze dafür das Tool 'saveToVault', wenn der Nutzer dich darum bittet (z.B. "Kern, speichere das als Game Changer").
+Frage im Zweifel nach der Kategorie (GAME CHANGER, SOLID WORK, NOISE) oder der Säule (mindset, business, health, relationships, finances).
+
+DEIN STIL:
+- Sei präzise, analytisch und direkt.
+- Keine unnötigen Höflichkeitsfloskeln.
+- Denke in den 5 Säulen.
+- Erinnere den Nutzer an seine Mission und seine Blocker.
+
 === SEED DATENBANK (STAND JETZT) ===
 Gesamt: ${stats.total} Seeds | Diese Woche neu: ${stats.weekly} | Abgeschlossen: ${stats.completed}
 
@@ -217,6 +252,38 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction,
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: "saveToVault",
+                  description: "Speichert eine neue Erkenntnis, Idee oder ein Projekt direkt in den Vault (SurrealDB).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      text: { type: Type.STRING, description: "Der Inhalt der Erkenntnis oder des Projekts." },
+                      category: { type: Type.STRING, enum: ["GAME CHANGER", "SOLID WORK", "NOISE"], description: "Die Prioritäts-Kategorie." },
+                      score: { type: Type.NUMBER, description: "Der Impact-Score (1.0 bis 10.0)." },
+                      pillarId: { type: Type.STRING, enum: ["mindset", "business", "health", "relationships", "finances"], description: "Die zugehörige Säule." },
+                      vaultId: { type: Type.STRING, enum: ["ideen", "projekte", "ziele", "workflows", "erkenntnisse", "toolbox", "kunden", "academy"], description: "Der Ziel-Vault." }
+                    },
+                    required: ["text", "category", "score", "pillarId", "vaultId"]
+                  }
+                },
+                {
+                  name: "saveWeeklyTask",
+                  description: "Speichert eine neue Aufgabe oder ein Ziel für die Woche direkt in die Wochen-Liste (SurrealDB).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      text: { type: Type.STRING, description: "Der Inhalt der Aufgabe/des Ziels." }
+                    },
+                    required: ["text"]
+                  }
+                }
+              ]
+            }
+          ],
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
           },
@@ -226,19 +293,101 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
         },
         callbacks: {
           onopen: () => {
+            if (connectTimeout) clearTimeout(connectTimeout);
             setStatus('active');
+            setIsStarting(false);
             isActiveRef.current = true;
             console.log("Live session opened");
           },
           onmessage: async (message: LiveServerMessage) => {
+            // Handle tool calls
+            if (message.toolCall) {
+              const calls = message.toolCall.functionCalls;
+              for (const call of calls) {
+                if (call.name === "saveToVault") {
+                  const args = call.args as any;
+                  if (onSaveItem) {
+                    try {
+                      await onSaveItem({
+                        text: args.text,
+                        category: args.category,
+                        score: args.score,
+                        pillarId: args.pillarId,
+                        vaultId: args.vaultId || 'erkenntnisse'
+                      });
+                      
+                      // Send response back to model
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { success: true, message: "Erfolgreich im Vault gespeichert." }
+                        }]
+                      });
+
+                      const line = `System: [Tool] ${args.text} wurde im Vault gespeichert.`;
+                      setTranscript(prev => [...prev.slice(-5), line]);
+                      setFullTranscript(prev => [...prev, line]);
+                    } catch (err) {
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { success: false, message: "Fehler beim Speichern im Vault." }
+                        }]
+                      });
+                    }
+                  }
+                }
+
+                if (call.name === "saveWeeklyTask") {
+                  const args = call.args as any;
+                  if (onSaveWeeklyTask) {
+                    try {
+                      await onSaveWeeklyTask(args.text);
+                      
+                      // Send response back to model
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { success: true, message: "Wochenaufgabe erfolgreich gespeichert." }
+                        }]
+                      });
+
+                      const line = `System: [Wochenaufgabe] ${args.text} wurde gespeichert.`;
+                      setTranscript(prev => [...prev.slice(-5), line]);
+                      setFullTranscript(prev => [...prev, line]);
+                    } catch (err) {
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { success: false, message: "Fehler beim Speichern der Wochenaufgabe." }
+                        }]
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
             // Handle transcriptions
             if (message.serverContent?.modelTurn?.parts) {
+              // Reset interruption flag when model starts a new turn part
+              // Usually if it's a new turn, we want to play it.
+              // If it's the SAME turn that was interrupted, the server should have stopped sending.
+              isInterruptedRef.current = false;
+
               for (const part of message.serverContent.modelTurn.parts) {
-                if (part.inlineData?.data) {
+                if (part.inlineData?.data && !isInterruptedRef.current) {
                   playAudioChunk(part.inlineData.data);
                 }
                 if (part.text) {
-                  setTranscript(prev => [...prev.slice(-5), `Kern: ${part.text!}`]);
+                  const line = `Kern: ${part.text!}`;
+                  setTranscript(prev => [...prev.slice(-5), line]);
+                  setFullTranscript(prev => [...prev, line]);
+                  if (onMessage) onMessage('D.T. Kern', part.text!);
                 }
               }
             }
@@ -246,10 +395,18 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             // Handle user transcription
             const userTranscript = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
             if (userTranscript) {
-              setTranscript(prev => [...prev.slice(-5), `Du: ${userTranscript}`]);
+              const line = `Du: ${userTranscript}`;
+              setTranscript(prev => [...prev.slice(-5), line]);
+              setFullTranscript(prev => [...prev, line]);
+              if (onMessage) onMessage('User', userTranscript);
+              
+              // Proactive interruption: if user is speaking, stop model audio
+              isInterruptedRef.current = true;
+              stopAllAudio();
             }
 
             if (message.serverContent?.interrupted) {
+              isInterruptedRef.current = true;
               stopAllAudio();
             }
           },
@@ -374,6 +531,20 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     });
   };
 
+  const handleSave = async () => {
+    if (fullTranscript.length === 0) return;
+    setIsSaving(true);
+    try {
+      await onSaveTranscript(fullTranscript);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to save transcript:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     return () => cleanup();
   }, []);
@@ -383,63 +554,144 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-dark flex flex-col items-center justify-center p-6"
+      className="fixed inset-0 z-[100] bg-black overflow-hidden"
     >
+      {/* Background Glow Effect - Truly fixed */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full" />
+      </div>
+
+      {/* Fixed UI Elements */}
       <button 
-        onClick={onClose}
-        className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-all"
+        onClick={() => {
+          console.log("LiveMode: Closing and returning to kern");
+          onClose(fullTranscript);
+        }}
+        className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 transition-all z-[120] border border-white/5 active:scale-95"
       >
         <X className="w-6 h-6" />
       </button>
 
-      <div className="w-full max-w-md space-y-8 sm:space-y-12 text-center px-4">
-        <div className="space-y-3 sm:space-y-4">
-          <div className={cn(
-            "w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-full flex items-center justify-center border-2 transition-all duration-500",
-            status === 'active' ? "border-primary bg-primary/10 shadow-[0_0_40px_rgba(16,185,129,0.2)]" : "border-white/10 bg-white/5"
-          )}>
-            {status === 'connecting' ? (
-              <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-spin" />
-            ) : status === 'active' ? (
-              <Activity className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
-            ) : (
-              <Brain className="w-8 h-8 sm:w-10 sm:h-10 text-slate-500" />
-            )}
+      {/* Ambient Status Indicators */}
+      <div className="absolute top-8 left-8 flex flex-col gap-1 z-20">
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-primary animate-pulse' : 'bg-slate-600'}`} />
+          <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">System Status</span>
+        </div>
+        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-3.5">
+          {status === 'active' ? 'Kern Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
+        </span>
+      </div>
+
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-12 z-20 hidden lg:flex">
+        <div className="flex flex-col items-center">
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Latenz</span>
+          <span className="text-[10px] font-mono text-primary/40">24ms</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Signal</span>
+          <span className="text-[10px] font-mono text-primary/40">Stabil</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Kern</span>
+          <span className="text-[10px] font-mono text-primary/40">Aktiv</span>
+        </div>
+      </div>
+
+      {/* System Log */}
+      <div className="absolute bottom-8 right-8 flex flex-col items-end gap-1 z-20 hidden md:flex">
+        <div className="flex items-center gap-2">
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">System Log</span>
+          <div className="w-1 h-1 rounded-full bg-primary/30" />
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-[9px] font-mono text-primary/30 uppercase">Core Sync: 98.4%</span>
+          <span className="text-[9px] font-mono text-primary/30 uppercase">Neural Paths: Optimized</span>
+          <span className="text-[9px] font-mono text-primary/30 uppercase">Memory Core: Ready</span>
+        </div>
+      </div>
+
+      {/* Scrollable Content Container */}
+      <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-12">
+        <div className="w-full max-w-md space-y-6 sm:space-y-8 text-center px-4 relative z-10">
+        <div className="flex flex-col items-center">
+          <div className="w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] relative">
+            {/* Inner Glow behind the object */}
+            <div className="absolute inset-0 bg-emerald-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
+            <LiquidMetal isActive={status === 'active'} />
           </div>
-          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white uppercase">D.T. KERN LIVE</h2>
-          <p className="text-xs sm:text-sm text-slate-400 font-medium">Strategische Analyse & Fokus-Support</p>
+          
+          {/* Digital Twin Label */}
+          <div className="mt-4 mb-2">
+            <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.8em] ml-[0.8em]">
+              Digital Twin
+            </span>
+          </div>
         </div>
 
         {status === 'idle' && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-6 sm:space-y-8"
+            className="w-full space-y-8"
           >
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
-                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seeds Gesamt</p>
-                <p className="text-lg sm:text-xl font-bold text-white">{stats.total}</p>
+              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seeds Gesamt</p>
+                <p className="text-2xl font-bold text-white mb-1">{stats.total}</p>
+                <p className="text-[8px] text-slate-600 font-medium">↑ seit letzter Session</p>
               </div>
-              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
-                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Neu (Woche)</p>
-                <p className="text-lg sm:text-xl font-bold text-primary">{stats.weekly}</p>
+              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Neu (Woche)</p>
+                <p className="text-2xl font-bold text-emerald-400 mb-1">{stats.weekly}</p>
+                <p className="text-[8px] text-slate-600 font-medium">aktive Pipeline</p>
               </div>
-              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
-                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">In Arbeit</p>
-                <p className="text-lg sm:text-xl font-bold text-indigo-400">{stats.inProgress}</p>
+              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">In Arbeit</p>
+                <p className="text-2xl font-bold text-blue-400 mb-1">{stats.inProgress}</p>
+                <p className="text-[8px] text-slate-600 font-medium">keine aktiven Seeds</p>
               </div>
-              <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/5">
-                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unberührt</p>
-                <p className="text-lg sm:text-xl font-bold text-amber-400">{stats.untouched}</p>
+              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unberührt</p>
+                <p className="text-2xl font-bold text-orange-400 mb-1">{stats.untouched}</p>
+                <p className="text-[8px] text-slate-600 font-medium">brauchen Aktivierung</p>
               </div>
             </div>
             
+            <div className="flex flex-col gap-4 pt-4">
+              <button 
+                disabled={isStarting}
+                onClick={startSession}
+                className="w-full bg-white/[0.02] text-white font-bold py-5 rounded-2xl text-xs sm:text-sm uppercase tracking-[0.4em] border border-white/10 hover:bg-white/5 active:scale-95 transition-all disabled:opacity-50"
+              >
+                Mission Starten
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {status === 'connecting' && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="space-y-8 flex flex-col items-center"
+          >
+            <div className="relative">
+              <Loader2 className="w-12 h-12 text-primary animate-spin" />
+              <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Initialisiere Kern...</p>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Verbindung zum Digitalen Zwilling wird aufgebaut</p>
+            </div>
             <button 
-              onClick={startSession}
-              className="w-full bg-primary text-dark font-black py-4 rounded-2xl text-xs sm:text-sm uppercase tracking-[0.2em] shadow-xl shadow-primary/20 active:scale-95 transition-all"
+              onClick={() => {
+                cleanup();
+                setStatus('idle');
+              }}
+              className="px-8 py-3 bg-white/5 hover:bg-white/10 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
             >
-              MISSION STARTEN
+              Abbrechen
             </button>
           </motion.div>
         )}
@@ -463,21 +715,6 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               ))}
             </div>
 
-            <div className="bg-white/5 p-4 sm:p-6 rounded-3xl border border-white/10 min-h-[100px] sm:min-h-[120px] flex flex-col justify-center gap-2">
-              {transcript.length > 0 ? (
-                transcript.map((line, i) => (
-                  <p key={i} className={cn(
-                    "text-xs sm:text-sm leading-relaxed",
-                    line.startsWith('Du:') ? "text-primary/70 font-medium" : "text-slate-200 italic"
-                  )}>
-                    {line}
-                  </p>
-                ))
-              ) : (
-                <p className="text-[10px] sm:text-xs text-slate-500 animate-pulse uppercase tracking-widest text-center">Höre zu...</p>
-              )}
-            </div>
-
             <button 
               onClick={startAnalysis}
               className="w-full bg-white/5 hover:bg-white/10 text-primary border border-primary/20 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
@@ -485,7 +722,17 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               Wöchentliche Analyse starten
             </button>
 
-            <div className="flex items-center justify-center gap-6">
+            <div className="flex items-center justify-center gap-4 sm:gap-6">
+              <button 
+                onClick={() => setShowHistory(true)}
+                className={cn(
+                  "p-4 rounded-full border transition-all flex items-center justify-center",
+                  "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                )}
+                title="Gesprächsverlauf anzeigen"
+              >
+                <Clock className="w-6 h-6" />
+              </button>
               <button 
                 onClick={() => {
                   const newMuted = !isMuted;
@@ -509,6 +756,24 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 <PhoneOff className="w-6 h-6" />
               </button>
             </div>
+
+            {saveSuccess && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-center"
+              >
+                <button 
+                  onClick={() => {
+                    cleanup();
+                    onClose(fullTranscript);
+                  }}
+                  className="text-[10px] sm:text-xs font-bold text-primary hover:text-white underline underline-offset-4 transition-colors uppercase tracking-widest"
+                >
+                  Gespeichert! Im Vault ansehen
+                </button>
+              </motion.div>
+            )}
           </div>
         )}
 
@@ -526,6 +791,97 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
           </div>
         )}
       </div>
+    </div>
+
+    <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="absolute inset-0 z-[110] bg-slate-950/95 backdrop-blur-2xl flex flex-col p-6 sm:p-10"
+          >
+            <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/20 rounded-xl">
+                    <Clock className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white uppercase tracking-tight">Gesprächsverlauf</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">D.T. Kern Live Session</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowHistory(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 pr-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                {fullTranscript.length > 0 ? (
+                  fullTranscript.map((line, i) => (
+                    <motion.div 
+                      key={i} 
+                      initial={{ opacity: 0, x: line.startsWith('Du:') ? 20 : -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className={cn(
+                        "p-4 rounded-2xl text-sm leading-relaxed border shadow-sm",
+                        line.startsWith('Du:') 
+                          ? "bg-primary/10 border-primary/20 text-primary/90 ml-12" 
+                          : "bg-white/5 border-white/5 text-slate-300 mr-12 italic"
+                      )}
+                    >
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-40 block mb-1">
+                        {line.startsWith('Du:') ? 'Nutzer' : 'D.T. Kern'}
+                      </span>
+                      {line.replace(/^(Du:|Kern:)\s*/, '')}
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center">
+                      <Clock className="w-8 h-8 opacity-20" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em]">Noch kein Verlauf vorhanden</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={handleSave}
+                  disabled={fullTranscript.length === 0 || isSaving}
+                  className={cn(
+                    "flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-lg",
+                    saveSuccess 
+                      ? "bg-green-500 text-white shadow-green-500/20" 
+                      : "bg-primary text-dark hover:bg-primary/90 shadow-primary/20"
+                  )}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : saveSuccess ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : (
+                    <Zap className="w-5 h-5" />
+                  )}
+                  {saveSuccess ? "Erfolgreich Gespeichert" : "Im Vault sichern"}
+                </button>
+                <button 
+                  onClick={() => setShowHistory(false)}
+                  className="px-8 py-4 bg-white/5 hover:bg-white/10 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all border border-white/5"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

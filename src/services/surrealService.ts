@@ -287,6 +287,75 @@ class SurrealService {
     console.log('Deleting ALL memory concepts from SurrealDB');
     return await (this.db as any).query('DELETE FROM memory_concepts');
   }
+
+  /**
+   * Billboard Items (Intel & Blocker)
+   */
+  async saveBillboardItem(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving billboard item to SurrealDB:', data.id);
+    return await (this.db as any).query('INSERT INTO billboard_items ' + JSON.stringify(data));
+  }
+
+  async getBillboardItems(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM billboard_items');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      throw err;
+    }
+  }
+
+  async updateBillboardItem(recordId: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `billboard_items:${recordId}`;
+    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
+  async deleteBillboardItem(recordId: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `billboard_items:${recordId}`;
+    return await this.db.delete(new StringRecordId(fullId));
+  }
+
+  async saveLog(log: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = log.id.includes(':') ? log.id : `logs:${log.id}`;
+    return await (this.db as any).query('INSERT INTO logs $data', { data: { ...log, id: fullId } });
+  }
+
+  async getLogs(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM logs ORDER BY timestamp ASC');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      return [];
+    }
+  }
 }
 
 export const surrealService = new SurrealService();
