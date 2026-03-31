@@ -44,8 +44,6 @@ import {
   Trophy,
   ArrowUpRight,
   Send,
-  Sun,
-  Moon,
   Download,
   ChevronDown,
   Shuffle,
@@ -321,9 +319,7 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isInputCollapsed, setIsInputCollapsed] = useState(false);
-  const [isLogCollapsed, setIsLogCollapsed] = useState(true);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSurrealModalOpen, setIsSurrealModalOpen] = useState(false);
@@ -693,13 +689,7 @@ export default function App() {
     if (!key) {
       console.error('CRITICAL: VITE_GEMINI_API_KEY is missing! Analysis will fail.');
     }
-    
-    if (isDarkMode) {
-      document.documentElement.classList.remove('light');
-    } else {
-      document.documentElement.classList.add('light');
-    }
-  }, [isDarkMode]);
+  }, []);
 
   const filteredItems = useMemo(() => {
     // Filter by view (Kern vs Vault)
@@ -2275,11 +2265,11 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
     maintainAspectRatio: false,
     scales: {
       r: {
-        angleLines: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
-        grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
+        angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+        grid: { color: 'rgba(255, 255, 255, 0.1)' },
         pointLabels: {
           font: { size: 12 },
-          color: isDarkMode ? '#cbd5e1' : '#475569'
+          color: '#cbd5e1'
         },
         ticks: {
           display: false,
@@ -2380,13 +2370,6 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
               <span>SurrealDB: </span>{surrealStatus === 'connected' ? 'Aktiv' : 'Off'}
             </button>
           </div>
-          
-          <button 
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="p-2 hover:bg-white/5 rounded-lg transition-all text-slate-500 hover:text-primary border border-white/5"
-          >
-            {isDarkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-          </button>
         </div>
       </nav>
 
@@ -2403,8 +2386,6 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
               isFileLoading={isFileLoading}
               isAnalyzing={isAnalyzing}
               handleFileUpload={handleFileUpload}
-              isLogCollapsed={isLogCollapsed}
-              setIsLogCollapsed={setIsLogCollapsed}
               logs={logs}
               chatInput={chatInput}
               setChatInput={setChatInput}

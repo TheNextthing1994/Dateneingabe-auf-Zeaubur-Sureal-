@@ -5,7 +5,7 @@ import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 
 // Register service worker for PWA
-registerSW({ immediate: true });
+registerSW({ immediate: false });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -11,8 +11,6 @@ import {
   FileText, 
   Loader2, 
   History, 
-  Eye, 
-  EyeOff, 
   Maximize2, 
   Minimize2, 
   MessageSquare, 
@@ -60,8 +58,6 @@ interface KernViewProps {
   fileInputRef: React.RefObject<HTMLInputElement>;
   isInputCollapsed: boolean;
   setIsInputCollapsed: (val: boolean) => void;
-  isLogCollapsed: boolean;
-  setIsLogCollapsed: (val: boolean) => void;
   logs: LogEntry[];
   chatInput: string;
   setChatInput: (val: string) => void;
@@ -125,8 +121,6 @@ export function KernView({
   fileInputRef,
   isInputCollapsed,
   setIsInputCollapsed,
-  isLogCollapsed,
-  setIsLogCollapsed,
   logs,
   chatInput,
   setChatInput,
@@ -263,14 +257,6 @@ export function KernView({
             </h3>
             <div className="flex items-center gap-2">
               <button 
-                onClick={() => setIsLogCollapsed(!isLogCollapsed)}
-                className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 hover:text-primary uppercase tracking-widest px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all active:scale-95"
-                title={isLogCollapsed ? "Log zeigen" : "Log einklappen"}
-              >
-                {isLogCollapsed ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                <span className="hidden xs:inline">{isLogCollapsed ? "Log" : "Hide"}</span>
-              </button>
-              <button 
                 onClick={() => setIsInputCollapsed(!isInputCollapsed)}
                 className="flex items-center gap-1.5 text-[9px] font-bold text-primary/70 hover:text-primary uppercase tracking-widest px-2 py-1 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
                 title={isInputCollapsed ? "Seed-Eingabe öffnen" : "Seed-Eingabe einklappen"}
@@ -279,18 +265,6 @@ export function KernView({
                 <span className="hidden xs:inline">{isInputCollapsed ? "Input" : "Hide"}</span>
               </button>
             </div>
-          </div>
-
-          {/* System Logs (Collapsible) */}
-          <div className={cn("space-y-1.5 mb-3 transition-all duration-500 overflow-hidden", isLogCollapsed ? "max-h-0 opacity-0" : "max-h-[100px] opacity-100 overflow-y-auto pr-2 scrollbar-hide")}>
-            {logs.filter(l => l.sender === 'System').map(log => (
-              <div key={log.id} className="text-[9px] text-slate-500 italic border-l border-white/10 pl-2 py-0.5 bg-white/[0.02] rounded-r-lg">
-                <span className="text-[8px] text-slate-700 mr-2 font-mono">
-                  {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                {log.text}
-              </div>
-            ))}
           </div>
 
           {/* Chat Area (Collapsible) */}

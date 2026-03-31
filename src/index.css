@@ -36,14 +36,6 @@
   --border-color: rgba(255, 255, 255, 0.05);
 }
 
-.light {
-  --bg-main: #f1f5f9;
-  --bg-panel: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #475569;
-  --border-color: rgba(0, 0, 0, 0.1);
-}
-
 @layer base {
   /* Body styles moved to top layer base block */
 }
@@ -57,12 +49,8 @@
 .markdown-body h1, .markdown-body h2, .markdown-body h3 { 
   @apply font-bold text-text-main mt-4 mb-2 border-b border-white/5 pb-1; 
 }
-.light .markdown-body h1, .light .markdown-body h2, .light .markdown-body h3 {
-  @apply border-black/5;
-}
 .markdown-body ul, .markdown-body ol { @apply pl-4 list-disc space-y-1; }
 .markdown-body code { @apply bg-black/20 px-1 rounded font-mono text-xs; }
-.light .markdown-body code { @apply bg-slate-200; }
 
 @keyframes blink {
   50% { opacity: 0; }
@@ -103,24 +91,12 @@
   z-index: 1;
 }
 
-.light .scanline {
-  display: none;
-}
-
 .terminal-text {
   text-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
 }
 
-.light .terminal-text {
-  text-shadow: none;
-}
-
 .glitch-effect:hover {
   text-shadow: 2px 0 0 #10b981, -2px 0 0 #8b5cf6;
-}
-
-.light .glitch-effect:hover {
-  text-shadow: none;
 }
 
 /* Custom Scrollbar */
