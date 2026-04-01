@@ -6,16 +6,28 @@
     width: 100%;
     background-color: #0A0A0A;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    -webkit-user-select: none;
     user-select: none;
-    touch-action: manipulation;
+    touch-action: pan-y pinch-zoom;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    @apply bg-dark text-text-main antialiased transition-colors duration-300;
+    @apply bg-dark text-text-main antialiased transition-colors duration-300 scrollbar-hide;
   }
+}
+
+/* Utility to hide scrollbars */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
 }
 
 @theme {
@@ -101,11 +113,14 @@
   text-shadow: 2px 0 0 #10b981, -2px 0 0 #8b5cf6;
 }
 
-/* Custom Scrollbar */
-.no-scrollbar::-webkit-scrollbar {
+/* Custom Scrollbar - Hidden by default for native feel */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
-.no-scrollbar {
+
+.no-scrollbar,
+.scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }

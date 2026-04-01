@@ -699,7 +699,7 @@ export function MapView({
         </main>
 
         {/* Node Detail Panel (Right) */}
-        <aside className="w-96 border-l border-white/5 bg-slate-900/60 backdrop-blur-xl flex flex-col">
+        <aside className="hidden lg:flex w-96 border-l border-white/5 bg-slate-900/60 backdrop-blur-xl flex-col">
           <AnimatePresence mode="wait">
             {selectedMapNode ? (
               <motion.div

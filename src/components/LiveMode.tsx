@@ -612,7 +612,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       </div>
 
       {/* Scrollable Content Container */}
-      <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-12">
+      <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-24 lg:pb-12">
         <div className="w-full max-w-md space-y-6 sm:space-y-8 text-center px-4 relative z-10">
         <div className="flex flex-col items-center">
           <div className="w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] relative">

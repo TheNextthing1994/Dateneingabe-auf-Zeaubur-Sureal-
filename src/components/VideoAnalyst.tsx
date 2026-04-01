@@ -203,7 +203,7 @@ export const VideoAnalyst: React.FC<VideoAnalystProps> = ({
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main Input Area */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide pb-24 lg:pb-8">
           <div className="max-w-3xl mx-auto space-y-6">
             {/* Input Section */}
             <div className="bg-white/[0.03] p-6 rounded-3xl border border-white/5 space-y-4">

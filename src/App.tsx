@@ -2314,7 +2314,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
   };
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans">
+    <div className="h-[100dvh] flex flex-col bg-dark text-slate-50 font-sans overflow-hidden">
       {/* Top Navigation */}
       <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-8">
@@ -2405,7 +2405,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
         </div>
       </nav>
 
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         <AnimatePresence mode="wait">
           {activeView === 'kern' && (
             <KernView 

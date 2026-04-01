@@ -180,10 +180,10 @@ export function KernView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.2 }}
-      className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden"
+      className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto lg:overflow-hidden scrollbar-hide pb-20 lg:pb-0"
     >
       {/* Left Panel: Input & Status */}
-      <section className="lg:w-1/3 bg-dark p-4 sm:p-5 border-r border-white/5 flex flex-col overflow-y-auto lg:h-full">
+      <section className="lg:w-1/3 bg-dark p-4 sm:p-5 border-r border-white/5 flex flex-col lg:overflow-y-auto lg:h-full">
         <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-6")}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
@@ -587,7 +587,7 @@ export function KernView({
       </section>
 
       {/* Right Panel: Dashboard */}
-      <section className="lg:w-2/3 bg-dark flex flex-col overflow-y-auto relative lg:h-full">
+      <section className="lg:w-2/3 bg-dark flex flex-col lg:overflow-y-auto relative lg:h-full">
         
         {/* Top Dashboard */}
         <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">

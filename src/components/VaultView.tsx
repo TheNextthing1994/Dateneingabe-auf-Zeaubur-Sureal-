@@ -255,7 +255,7 @@ export function VaultView({
 
         {/* 2. CENTER COLUMN: RESULTS */}
         <main className="flex-1 flex flex-col min-w-0 bg-slate-900/30">
-          <div className="p-8 flex-1 overflow-y-auto scrollbar-hide">
+          <div className="p-8 flex-1 overflow-y-auto scrollbar-hide pb-24 lg:pb-8">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
                 <Layout className="w-4 h-4" /> 
