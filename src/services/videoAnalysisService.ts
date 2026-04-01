@@ -22,8 +22,7 @@ export class VideoAnalysisService {
 
   async analyzeVideo(youtubeUrl: string, userPrompt: string, onLog?: (message: string) => void, videoBase64?: string): Promise<string> {
     try {
-      const model = "gemini-3-flash-preview";
-      onLog?.(`Initialisiere Analyse für Modell: ${model}`);
+      onLog?.("Initialisiere Analyse für Modell: gemini-flash-latest");
       
       const parts: any[] = [];
 
@@ -59,23 +58,18 @@ export class VideoAnalysisService {
         }
 
         parts.push({
-          text: `Du bist ein spezialisierter Video-Analyst. Analysiere das folgende Video.\n\nDATENQUELLE (TRANSKRIPT/METADATEN):\n---\n${contextData || "KEINE DATEN VERFÜGBAR."}\n---\n\nVIDEO-URL: ${youtubeUrl}\n\nNUTZER-FRAGE: ${userPrompt}\n\nANWEISUNG: Nutze das Transkript und versuche über deine Tools (googleSearch/urlContext) auf das Video zuzugreifen, um visuelle Details zu bestätigen.`
+          text: `Du bist ein spezialisierter Video-Analyst. Analysiere das folgende Video.\n\nDATENQUELLE (TRANSKRIPT/METADATEN):\n---\n${contextData || "KEINE DATEN VERFÜGBAR."}\n---\n\nVIDEO-URL: ${youtubeUrl}\n\nNUTZER-FRAGE: ${userPrompt}\n\nANWEISUNG: Nutze das bereitgestellte Transkript und die Metadaten, um die Frage präzise zu beantworten. Falls Zeitstempel vorhanden sind, beziehe dich darauf.`
         });
       }
 
-      onLog?.("Sende Request an Gemini API (Multimodal + Tools)...");
+      onLog?.("Sende Request an Gemini API...");
       
       const response = await this.ai.models.generateContent({
-        model: model,
+        model: "gemini-flash-latest",
         contents: [{ parts }],
         config: {
-          systemInstruction: "Du bist ein Video-Analyst. Deine Aufgabe ist es, Videos tiefenanalysieren zu können. Erkenne visuelle Details, höre auf das Gesagte und versehe deine Antworten mit präzisen Zeitstempeln (z.B. [03:34]). Sei analytisch, präzise und direkt.",
-          tools: [
-            { googleSearch: {} },
-            { urlContext: {} }
-          ],
-          // Enable server-side tool invocations for better link processing
-          toolConfig: { includeServerSideToolInvocations: true } as any
+          systemInstruction: "Du bist ein Video-Analyst. Deine Aufgabe ist es, Videos tiefenanalysieren zu können. Erkenne visuelle Details (falls Video-Upload), höre auf das Gesagte (Transkript) und versehe deine Antworten mit präzisen Zeitstempeln (z.B. [03:34]). Sei analytisch, präzise und direkt.",
+          // Removed googleSearch and urlContext to avoid 403 Forbidden errors in this environment
         }
       });
 

@@ -2314,7 +2314,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
   };
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+4rem)] lg:pb-0 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans">
       {/* Top Navigation */}
       <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-8">
@@ -3688,7 +3688,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
           </AnimatePresence>
 
           {/* Mobile Bottom Navigation */}
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-xl border-t border-white/10 flex items-center justify-around px-6 z-50 pb-[env(safe-area-inset-bottom)]">
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-xl border-t border-white/10 flex items-center justify-around px-6 z-50">
             <button 
               onClick={() => setActiveView('kern')}
               className={cn(
