@@ -90,6 +90,7 @@ import { KernView } from './components/KernView';
 import { VaultView } from './components/VaultView';
 import { MapView } from './components/MapView';
 import { BoardCard } from './components/BoardCard';
+import { VideoAnalyst } from './components/VideoAnalyst';
 
 ChartJS.register(
   RadialLinearScale,
@@ -303,8 +304,28 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live'>('kern');
+  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video'>('kern');
+  const [shareData, setShareData] = useState<{ url: string; prompt: string; auto: boolean } | null>(null);
   
+  useEffect(() => {
+    // Handle Web Share Target
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get('url') || params.get('text');
+    const sharedTitle = params.get('title');
+
+    if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
+      setShareData({
+        url: sharedUrl,
+        prompt: sharedTitle || 'Analysiere dieses Video.',
+        auto: true
+      });
+      setActiveView('video');
+      
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   useEffect(() => {
     console.log("App: activeView changed to", activeView);
   }, [activeView]);
@@ -2349,6 +2370,17 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
             >
               LIVE
             </button>
+            <button 
+              onClick={() => setActiveView('video')}
+              className={cn(
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeView === 'video' 
+                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20" 
+                  : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              VIDEO
+            </button>
           </div>
         </div>
 
@@ -3021,6 +3053,23 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
             </motion.div>
           )}
 
+          {activeView === 'video' && (
+            <motion.div 
+              key="video"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.3 }}
+              className="flex-1 flex flex-col overflow-hidden h-full"
+            >
+              <VideoAnalyst 
+                initialUrl={shareData?.url} 
+                initialPrompt={shareData?.prompt}
+                autoAnalyze={shareData?.auto}
+              />
+            </motion.div>
+          )}
+
           {activeView === 'map' && (
             <motion.div
               key="map"
@@ -3659,6 +3708,16 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
             >
               <Database className="w-5 h-5" />
               <span className="text-[10px] font-bold uppercase tracking-widest">Vault</span>
+            </button>
+            <button 
+              onClick={() => setActiveView('video')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                activeView === 'video' ? "text-red-500" : "text-slate-500"
+              )}
+            >
+              <Youtube className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Video</span>
             </button>
             <button 
               onClick={() => setActiveView('map')}

@@ -15,65 +15,76 @@ async function startServer() {
       return res.status(400).json({ error: 'Missing YouTube URL' });
     }
 
+    // Extract Video ID
+    let videoId = '';
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = videoUrl.match(regExp);
+    if (match && match[2].length === 11) {
+      videoId = match[2];
+    } else {
+      videoId = videoUrl; // Fallback to raw string if it's just the ID
+    }
+
     try {
-      console.log(`Fetching transcript for: ${videoUrl}`);
-      // Import the ESM version directly to avoid CJS/ESM conflict in the library
+      console.log(`Fetching transcript for Video ID: ${videoId}`);
       const { YoutubeTranscript } = await import('youtube-transcript/dist/youtube-transcript.esm.js');
-      const transcript = await YoutubeTranscript.fetchTranscript(videoUrl);
       
+      // Try to fetch transcript
+      const transcript = await YoutubeTranscript.fetchTranscript(videoId);
       const fullText = transcript.map(part => part.text).join(' ');
       
       res.json({ 
         transcript: fullText,
-        parts: transcript.length
+        parts: transcript.length,
+        videoId,
+        source: 'transcript'
       });
     } catch (error: any) {
       const errorMessage = error.message || String(error);
-      console.warn(`Transcript fetch failed for ${videoUrl}:`, errorMessage);
+      console.warn(`Transcript fetch failed for ${videoId}:`, errorMessage);
       
-      let title = '';
-      let description = '';
-      
-      // Try to extract title from error message if possible (YoutubeTranscript library sometimes includes it)
-      const titleMatchFromError = errorMessage.match(/\((.*)\)$/);
-      if (titleMatchFromError) {
-        title = titleMatchFromError[1];
-      }
-
+      // Fallback: Try to get metadata (Title/Description)
       try {
-        // Fallback: Fetch the page and try to extract title/description
-        const response = await fetch(videoUrl);
+        console.log("Transkript deaktiviert. Versuche Metadaten-Extraktion...");
+        const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+          }
+        });
         const html = await response.text();
         
-        if (!title) {
-          const titleMatch = html.match(/<title>(.*?)<\/title>/);
-          if (titleMatch) {
-            title = titleMatch[1].replace(' - YouTube', '');
-          }
-        }
+        const titleMatch = html.match(/<title>(.*?)<\/title>/);
+        const title = titleMatch ? titleMatch[1].replace(' - YouTube', '') : 'Unbekannter Titel';
         
-        // Try to find description in the HTML
+        // Better description extraction
+        let description = '';
         const descriptionMatch = html.match(/"shortDescription":"(.*?)"/);
         if (descriptionMatch) {
           description = descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        } else {
+          // Fallback regex for description
+          const metaDescMatch = html.match(/meta name="description" content="(.*?)"/);
+          description = metaDescMatch ? metaDescMatch[1] : 'Keine Beschreibung gefunden.';
         }
-      } catch (fallbackErr) {
-        console.error('Metadata fallback failed:', fallbackErr);
-      }
 
-      if (title || description) {
+        const reason = errorMessage.includes('disabled') ? 'deaktiviert' : 'nicht verfügbar';
+
         return res.json({ 
-          transcript: `[TRANSKRIPT DEAKTIVIERT]\n\nTITEL: ${title}\n\nBESCHREIBUNG: ${description}`,
+          transcript: `TITEL: ${title}\n\nBESCHREIBUNG: ${description}\n\n[HINWEIS: Das Transkript ist für dieses Video ${reason}. Nutze diese Metadaten für die Analyse.]`,
           parts: 0,
           isMetadataOnly: true,
-          title
+          title,
+          videoId,
+          source: 'metadata'
+        });
+      } catch (fallbackErr) {
+        res.status(500).json({ 
+          error: 'Failed to fetch any data from YouTube', 
+          details: errorMessage,
+          videoId
         });
       }
-
-      res.status(500).json({ 
-        error: 'Failed to fetch transcript', 
-        details: errorMessage 
-      });
     }
   });
 

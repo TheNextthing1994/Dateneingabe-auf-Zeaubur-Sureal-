@@ -23,6 +23,7 @@ export const getEnv = (key: string, defaultValue: string = ''): string => {
   // 2. Check import.meta.env (build-time config)
   let buildVal = '';
   if (key === 'VITE_GEMINI_API_KEY') buildVal = import.meta.env.VITE_GEMINI_API_KEY;
+  else if (key === 'GOOGLE_API_KEY') buildVal = import.meta.env.GOOGLE_API_KEY;
   else if (key === 'VITE_SURREALDB_URL') buildVal = import.meta.env.VITE_SURREALDB_URL;
   else if (key === 'VITE_SURREALDB_NS') buildVal = import.meta.env.VITE_SURREALDB_NS;
   else if (key === 'VITE_SURREALDB_DB') buildVal = import.meta.env.VITE_SURREALDB_DB;

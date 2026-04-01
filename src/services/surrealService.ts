@@ -336,6 +336,33 @@ class SurrealService {
     return await (this.db as any).query('INSERT INTO logs $data', { data: { ...log, id: fullId } });
   }
 
+  async saveVideoSeed(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving video seed to SurrealDB:', data.id);
+    return await (this.db as any).query('INSERT INTO video_seeds ' + JSON.stringify(data));
+  }
+
+  async getVideoSeeds(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM video_seeds');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      throw err;
+    }
+  }
+
   async getLogs(): Promise<any[]> {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     try {
