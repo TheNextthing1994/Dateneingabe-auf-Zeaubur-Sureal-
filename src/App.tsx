@@ -2314,7 +2314,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
   };
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-dark text-slate-50 font-sans overflow-hidden">
+    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans">
       {/* Top Navigation */}
       <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-8">
@@ -2405,7 +2405,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
         </div>
       </nav>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         <AnimatePresence mode="wait">
           {activeView === 'kern' && (
             <KernView 
@@ -3060,7 +3060,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.3 }}
-              className="flex-1 flex flex-col overflow-hidden h-full"
+              className="flex-1 flex flex-col h-full"
             >
               <VideoAnalyst 
                 initialUrl={shareData?.url} 
@@ -3077,7 +3077,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.3 }}
-              className="flex-1 flex flex-col overflow-hidden h-full bg-slate-950/40 backdrop-blur-md rounded-3xl border border-white/5"
+              className="flex-1 flex flex-col h-full bg-slate-950/40 backdrop-blur-md rounded-3xl border border-white/5"
             >
               <div className="flex-1 flex overflow-hidden relative">
                 {/* Map Control Panel (Left) */}

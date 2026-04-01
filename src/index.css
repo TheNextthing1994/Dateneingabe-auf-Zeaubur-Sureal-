@@ -2,32 +2,29 @@
 
 @layer base {
   html, body, #root {
-    height: 100dvh;
+    min-height: 100dvh;
     width: 100%;
     background-color: #0A0A0A;
-    overflow: hidden;
     overscroll-behavior: none;
   }
 
   body {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
-    -webkit-user-select: none;
     user-select: none;
-    touch-action: pan-y pinch-zoom;
+    touch-action: manipulation;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    @apply bg-dark text-text-main antialiased transition-colors duration-300 scrollbar-hide;
+    @apply bg-dark text-text-main antialiased transition-colors duration-300;
   }
-}
 
-/* Utility to hide scrollbars */
-.scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Chrome, Safari and Opera */
+  /* Global Scrollbar Hide */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @theme {
@@ -113,14 +110,11 @@
   text-shadow: 2px 0 0 #10b981, -2px 0 0 #8b5cf6;
 }
 
-/* Custom Scrollbar - Hidden by default for native feel */
-.no-scrollbar::-webkit-scrollbar,
-.scrollbar-hide::-webkit-scrollbar {
+/* Custom Scrollbar */
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-
-.no-scrollbar,
-.scrollbar-hide {
+.no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
