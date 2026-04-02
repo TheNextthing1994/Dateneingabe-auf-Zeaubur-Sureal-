@@ -337,9 +337,18 @@ export default function App() {
   const [selectedSeeds, setSelectedSeeds] = useState<AnalyzedItem[]>([]);
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   
-  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>([]);
+  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>(() => {
+    const saved = localStorage.getItem('daily_intels');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isProcessingIntel, setIsProcessingIntel] = useState(false);
   const processedUrls = useRef<Set<string>>(new Set());
+
+  // Persist dailyIntels to localStorage
+  useEffect(() => {
+    console.log('Daily Intels state changed:', dailyIntels.length, 'items');
+    localStorage.setItem('daily_intels', JSON.stringify(dailyIntels));
+  }, [dailyIntels]);
 
   const processIncomingIntel = async (url: string, title?: string) => {
     if (isProcessingIntel) return;
@@ -517,7 +526,7 @@ export default function App() {
 
       // Standalone or fallback for failed merge
       const newIntel: DailyIntel = {
-        id: `intel_${Date.now()}`,
+        id: `INTEL_FEED:intel_${Date.now()}`,
         url,
         title: result.title || title || "YouTube Intel",
         analyst_report: result.analyst_report,
@@ -552,8 +561,24 @@ export default function App() {
 
   useEffect(() => {
     if (surrealStatus === 'connected') {
+      console.log('SurrealDB connected, triggering Daily Intel sync...');
       surrealService.getDailyIntels().then(items => {
-        setDailyIntels(items || []);
+        console.log('SurrealDB: Loaded', items?.length, 'daily intels');
+        if (items && items.length > 0) {
+          setDailyIntels(prev => {
+            // Merge DB items with local items, prioritizing DB items by ID
+            const combined = [...items, ...prev];
+            const unique = combined.filter((item, index, self) => {
+              const firstIndex = self.findIndex((t) => t.id === item.id);
+              return index === firstIndex;
+            });
+            const sorted = unique.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            console.log('SurrealDB: Sync complete, total items:', sorted.length);
+            return sorted;
+          });
+        }
+      }).catch(err => {
+        console.error('SurrealDB: Sync failed:', err);
       });
     }
   }, [surrealStatus]);
@@ -1636,7 +1661,14 @@ export default function App() {
 
         const storedDailyIntels = await surrealService.getDailyIntels();
         if (storedDailyIntels && storedDailyIntels.length > 0) {
-          setDailyIntels(storedDailyIntels);
+          setDailyIntels(prev => {
+            const combined = [...storedDailyIntels, ...prev];
+            const unique = combined.filter((item, index, self) => {
+              const firstIndex = self.findIndex((t) => t.id === item.id);
+              return index === firstIndex;
+            });
+            return unique.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          });
         }
 
         if (storedMemoryConcepts && storedMemoryConcepts.length > 0) {

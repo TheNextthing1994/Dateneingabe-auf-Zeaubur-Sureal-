@@ -411,9 +411,16 @@ class SurrealService {
    */
   async saveDailyIntel(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving daily intel to SurrealDB:', data.id);
-    const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
-    return await (this.db as any).query('INSERT INTO INTEL_FEED $data', { data: { ...data, id: fullId } });
+    console.log('SurrealDB: Saving daily intel:', data.id);
+    try {
+      const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
+      const result = await (this.db as any).query('INSERT INTO INTEL_FEED $data', { data: { ...data, id: fullId } });
+      console.log('SurrealDB: Save result:', result);
+      return result;
+    } catch (err) {
+      console.error('SurrealDB: Save failed:', err);
+      throw err;
+    }
   }
 
   async getDailyIntels(): Promise<any[]> {
