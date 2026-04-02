@@ -348,7 +348,12 @@ export default function App() {
     showNotification("Gefangen! Der D.T. analysiert im Hintergrund...", 'success');
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = getEnv('VITE_GEMINI_API_KEY') || (process.env as any).GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY is missing');
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
       
       // Get recent context for accumulation (last 5 items from today)
       const recentContext = dailyIntels.slice(0, 5).map(item => ({
@@ -358,66 +363,119 @@ export default function App() {
         summary: item.navigator_infographic.visual_summary.join(' ')
       }));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Du bist das autonome Analyse-Team des Digital Twin (D.T.). 
-        Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}.
-        
-        AKKUMULATIONS-PRÜFUNG:
-        Prüfe, ob dieses Video Synergien mit folgenden kürzlich erfassten Intel-Items hat:
-        ${JSON.stringify(recentContext)}
-        
-        Wenn eine starke Synergie besteht (z.B. gleiches Projekt, ergänzende Technik), entscheide dich für eine KOMBINATION.
-        In diesem Fall wird das bestehende Item aktualisiert und erweitert, anstatt ein neues zu erstellen.
-        
-        Führe folgende Schritte aus:
-        1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
-        2. Supreme Officer: Entscheide: 'discard', 'archive', 'build' ODER 'merge' (wenn Synergie mit einem der oben genannten IDs besteht).
-        3. Builder: Erstelle/Erweitere die Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
-        4. Chronicle Officer: Dokumentiere den Denkprozess (auch warum kombiniert wurde).
-        5. Morning Navigator: Erstelle/Erweitere die Text-Infografik (Headline, Bulletpoints, Punchline).
-        
-        Antworte STRENG im JSON Format.`,
-        config: {
-          tools: [{ urlContext: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              analyst_report: {
-                type: Type.OBJECT,
-                properties: {
-                  core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  relevance_score: { type: Type.NUMBER },
-                  goal_alignment: { type: Type.STRING }
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Du bist das autonome Analyse-Team des Digital Twin (D.T.). 
+          Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}.
+          
+          AKKUMULATIONS-PRÜFUNG:
+          Prüfe, ob dieses Video Synergien mit folgenden kürzlich erfassten Intel-Items hat:
+          ${JSON.stringify(recentContext)}
+          
+          Wenn eine starke Synergie besteht (z.B. gleiches Projekt, ergänzende Technik), entscheide dich für eine KOMBINATION.
+          In diesem Fall wird das bestehende Item aktualisiert und erweitert, anstatt ein neues zu erstellen.
+          
+          Führe folgende Schritte aus:
+          1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
+          2. Supreme Officer: Entscheide: 'discard', 'archive', 'build' ODER 'merge' (wenn Synergie mit einem der oben genannten IDs besteht).
+          3. Builder: Erstelle/Erweitere die Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
+          4. Chronicle Officer: Dokumentiere den Denkprozess (auch warum kombiniert wurde).
+          5. Morning Navigator: Erstelle/Erweitere die Text-Infografik (Headline, Bulletpoints, Punchline).
+          
+          Antworte STRENG im JSON Format.`,
+          config: {
+            tools: [{ urlContext: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                analyst_report: {
+                  type: Type.OBJECT,
+                  properties: {
+                    core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    relevance_score: { type: Type.NUMBER },
+                    goal_alignment: { type: Type.STRING }
+                  },
+                  required: ["core_points", "relevance_score", "goal_alignment"]
                 },
-                required: ["core_points", "relevance_score", "goal_alignment"]
-              },
-              supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
-              merge_with_id: { type: Type.STRING, description: "ID des Items aus dem Context, mit dem kombiniert werden soll" },
-              builder_plan: {
-                type: Type.OBJECT,
-                properties: {
-                  steps: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  tech_stack_notes: { type: Type.STRING }
-                }
-              },
-              navigator_infographic: {
-                type: Type.OBJECT,
-                properties: {
-                  headline: { type: Type.STRING },
-                  visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  punchline: { type: Type.STRING }
+                supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
+                merge_with_id: { type: Type.STRING, description: "ID des Items aus dem Context, mit dem kombiniert werden soll" },
+                builder_plan: {
+                  type: Type.OBJECT,
+                  properties: {
+                    steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    tech_stack_notes: { type: Type.STRING }
+                  }
                 },
-                required: ["headline", "visual_summary", "punchline"]
+                navigator_infographic: {
+                  type: Type.OBJECT,
+                  properties: {
+                    headline: { type: Type.STRING },
+                    visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    punchline: { type: Type.STRING }
+                  },
+                  required: ["headline", "visual_summary", "punchline"]
+                },
+                chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
+              required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
+            }
           }
-        }
-      });
+        });
+      } catch (aiErr: any) {
+        console.error('AI Call failed with urlContext, retrying without it...', aiErr);
+        // Fallback: Try without urlContext if it fails (e.g. video restricted or no transcript)
+        response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Analysiere dieses YouTube Video (nur basierend auf Titel/Metadaten): ${url}. ${title ? `Titel: ${title}` : ''}.
+          
+          Führe folgende Schritte aus:
+          1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
+          2. Supreme Officer: Entscheide: 'discard', 'archive', 'build'.
+          3. Builder: Erstelle eine Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
+          4. Chronicle Officer: Dokumentiere den Denkprozess.
+          5. Morning Navigator: Erstelle eine Text-Infografik (Headline, Bulletpoints, Punchline).
+          
+          Antworte STRENG im JSON Format.`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                analyst_report: {
+                  type: Type.OBJECT,
+                  properties: {
+                    core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    relevance_score: { type: Type.NUMBER },
+                    goal_alignment: { type: Type.STRING }
+                  },
+                  required: ["core_points", "relevance_score", "goal_alignment"]
+                },
+                supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
+                navigator_infographic: {
+                  type: Type.OBJECT,
+                  properties: {
+                    headline: { type: Type.STRING },
+                    visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    punchline: { type: Type.STRING }
+                  },
+                  required: ["headline", "visual_summary", "punchline"]
+                },
+                chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
+            }
+          }
+        });
+      }
+
+      if (!response || !response.text) {
+        throw new Error('Keine Antwort von Gemini erhalten');
+      }
 
       const result = JSON.parse(response.text);
       
@@ -470,9 +528,17 @@ export default function App() {
       }
 
       showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic.headline}`, 'success');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error processing intel:', err);
-      showNotification("Fehler bei der autonomen Analyse", 'warn');
+      const errorMsg = err?.message || String(err);
+      
+      if (errorMsg.includes('API_KEY')) {
+        showNotification("Gemini API Key fehlt oder ist ungültig", 'warn');
+      } else if (errorMsg.includes('urlContext') || errorMsg.includes('fetch')) {
+        showNotification("Video-Inhalt konnte nicht geladen werden (evtl. keine Untertitel)", 'warn');
+      } else {
+        showNotification(`Analyse-Fehler: ${errorMsg.slice(0, 50)}...`, 'warn');
+      }
     } finally {
       setIsProcessingIntel(false);
     }
