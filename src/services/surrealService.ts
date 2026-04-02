@@ -363,6 +363,92 @@ class SurrealService {
     }
   }
 
+  /**
+   * Intel Seeds (Educational YouTube Processing)
+   */
+  async saveIntelSeed(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving intel seed to SurrealDB:', data.id);
+    const fullId = data.id.includes(':') ? data.id : `intel_seeds:${data.id}`;
+    return await (this.db as any).query('INSERT INTO intel_seeds $data', { data: { ...data, id: fullId } });
+  }
+
+  async getIntelSeeds(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM intel_seeds ORDER BY timestamp DESC');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      return [];
+    }
+  }
+
+  async updateIntelSeed(recordId: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `intel_seeds:${recordId}`;
+    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
+  async deleteIntelSeed(recordId: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `intel_seeds:${recordId}`;
+    return await this.db.delete(new StringRecordId(fullId));
+  }
+
+  /**
+   * Daily Intel Feed (Agentic Workflow Results)
+   */
+  async saveDailyIntel(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    console.log('Saving daily intel to SurrealDB:', data.id);
+    const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
+    return await (this.db as any).query('INSERT INTO INTEL_FEED $data', { data: { ...data, id: fullId } });
+  }
+
+  async getDailyIntels(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM INTEL_FEED ORDER BY timestamp DESC');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      if (!Array.isArray(records)) return [];
+      return records.map(item => {
+        const fullId = item.id.toString();
+        return { ...item, id: fullId, rawId: fullId };
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
+      return [];
+    }
+  }
+
+  async deleteDailyIntel(recordId: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
+    return await this.db.delete(new StringRecordId(fullId));
+  }
+
+  async updateDailyIntel(recordId: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
+    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
   async getLogs(): Promise<any[]> {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     try {

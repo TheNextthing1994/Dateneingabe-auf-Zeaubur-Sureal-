@@ -554,10 +554,10 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black overflow-hidden"
+      className="fixed inset-0 z-[100] bg-black"
     >
       {/* Background Glow Effect - Truly fixed */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full" />
       </div>
 
@@ -613,9 +613,9 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
 
       {/* Scrollable Content Container */}
       <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-24 lg:pb-12">
-        <div className="w-full max-w-md space-y-6 sm:space-y-8 text-center px-4 relative z-10">
+        <div className="w-full max-w-2xl space-y-6 sm:space-y-8 text-center px-4 relative z-10">
         <div className="flex flex-col items-center">
-          <div className="w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] relative">
+          <div className="w-full aspect-square max-w-[400px] sm:max-w-[500px] relative">
             {/* Inner Glow behind the object */}
             <div className="absolute inset-0 bg-emerald-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
             <LiquidMetal isActive={status === 'active'} />

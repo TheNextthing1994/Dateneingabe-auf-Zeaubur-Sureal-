@@ -91,6 +91,7 @@ import { VaultView } from './components/VaultView';
 import { MapView } from './components/MapView';
 import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
+import { IntelFeed, DailyIntel } from './components/IntelFeed';
 
 ChartJS.register(
   RadialLinearScale,
@@ -308,25 +309,6 @@ export default function App() {
   const [shareData, setShareData] = useState<{ url: string; prompt: string; auto: boolean } | null>(null);
   
   useEffect(() => {
-    // Handle Web Share Target
-    const params = new URLSearchParams(window.location.search);
-    const sharedUrl = params.get('url') || params.get('text');
-    const sharedTitle = params.get('title');
-
-    if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
-      setShareData({
-        url: sharedUrl,
-        prompt: sharedTitle || 'Analysiere dieses Video.',
-        auto: true
-      });
-      setActiveView('video');
-      
-      // Clean up URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  useEffect(() => {
     console.log("App: activeView changed to", activeView);
   }, [activeView]);
 
@@ -354,6 +336,161 @@ export default function App() {
   const [blockerInput, setBlockerInput] = useState('');
   const [selectedSeeds, setSelectedSeeds] = useState<AnalyzedItem[]>([]);
   const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  
+  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>([]);
+  const [isProcessingIntel, setIsProcessingIntel] = useState(false);
+
+  const processIncomingIntel = async (url: string, title?: string) => {
+    if (isProcessingIntel) return;
+    setIsProcessingIntel(true);
+    
+    // Immediate feedback
+    showNotification("Gefangen! Der D.T. analysiert im Hintergrund...", 'success');
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      // Get recent context for accumulation (last 5 items from today)
+      const recentContext = dailyIntels.slice(0, 5).map(item => ({
+        id: item.id,
+        title: item.title,
+        headline: item.navigator_infographic.headline,
+        summary: item.navigator_infographic.visual_summary.join(' ')
+      }));
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Du bist das autonome Analyse-Team des Digital Twin (D.T.). 
+        Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}.
+        
+        AKKUMULATIONS-PRÜFUNG:
+        Prüfe, ob dieses Video Synergien mit folgenden kürzlich erfassten Intel-Items hat:
+        ${JSON.stringify(recentContext)}
+        
+        Wenn eine starke Synergie besteht (z.B. gleiches Projekt, ergänzende Technik), entscheide dich für eine KOMBINATION.
+        In diesem Fall wird das bestehende Item aktualisiert und erweitert, anstatt ein neues zu erstellen.
+        
+        Führe folgende Schritte aus:
+        1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
+        2. Supreme Officer: Entscheide: 'discard', 'archive', 'build' ODER 'merge' (wenn Synergie mit einem der oben genannten IDs besteht).
+        3. Builder: Erstelle/Erweitere die Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
+        4. Chronicle Officer: Dokumentiere den Denkprozess (auch warum kombiniert wurde).
+        5. Morning Navigator: Erstelle/Erweitere die Text-Infografik (Headline, Bulletpoints, Punchline).
+        
+        Antworte STRENG im JSON Format.`,
+        config: {
+          tools: [{ urlContext: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              analyst_report: {
+                type: Type.OBJECT,
+                properties: {
+                  core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  relevance_score: { type: Type.NUMBER },
+                  goal_alignment: { type: Type.STRING }
+                },
+                required: ["core_points", "relevance_score", "goal_alignment"]
+              },
+              supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
+              merge_with_id: { type: Type.STRING, description: "ID des Items aus dem Context, mit dem kombiniert werden soll" },
+              builder_plan: {
+                type: Type.OBJECT,
+                properties: {
+                  steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  tech_stack_notes: { type: Type.STRING }
+                }
+              },
+              navigator_infographic: {
+                type: Type.OBJECT,
+                properties: {
+                  headline: { type: Type.STRING },
+                  visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  punchline: { type: Type.STRING }
+                },
+                required: ["headline", "visual_summary", "punchline"]
+              },
+              chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text);
+      
+      if (result.supreme_decision === 'discard') {
+        showNotification("Video analysiert: Als irrelevant verworfen.", 'info');
+        return;
+      }
+
+      if (result.supreme_decision === 'merge' && result.merge_with_id) {
+        const targetId = result.merge_with_id;
+        const existingItem = dailyIntels.find(i => i.id === targetId);
+        
+        if (existingItem) {
+          const updatedIntel: DailyIntel = {
+            ...existingItem,
+            title: `Kombiniert: ${existingItem.title} & ${result.title}`,
+            additional_urls: [...(existingItem.additional_urls || []), url],
+            analyst_report: result.analyst_report,
+            builder_plan: result.builder_plan,
+            navigator_infographic: result.navigator_infographic,
+            chronicle_log: [...existingItem.chronicle_log, ...result.chronicle_log],
+            timestamp: Date.now() // Update to top of feed
+          };
+
+          setDailyIntels(prev => [updatedIntel, ...prev.filter(i => i.id !== targetId)]);
+          if (surrealStatus === 'connected') {
+            await surrealService.updateDailyIntel(targetId, updatedIntel);
+          }
+          showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic.headline}`, 'success');
+          return;
+        }
+      }
+
+      // Standalone or fallback for failed merge
+      const newIntel: DailyIntel = {
+        id: `intel_${Date.now()}`,
+        url,
+        title: result.title || title || "YouTube Intel",
+        analyst_report: result.analyst_report,
+        supreme_decision: result.supreme_decision === 'merge' ? 'build' : result.supreme_decision,
+        builder_plan: result.builder_plan,
+        navigator_infographic: result.navigator_infographic,
+        chronicle_log: result.chronicle_log,
+        timestamp: Date.now()
+      };
+
+      setDailyIntels(prev => [newIntel, ...prev]);
+      if (surrealStatus === 'connected') {
+        await surrealService.saveDailyIntel(newIntel);
+      }
+
+      showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic.headline}`, 'success');
+    } catch (err) {
+      console.error('Error processing intel:', err);
+      showNotification("Fehler bei der autonomen Analyse", 'warn');
+    } finally {
+      setIsProcessingIntel(false);
+    }
+  };
+
+  useEffect(() => {
+    // Handle Web Share Target
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get('url') || params.get('text');
+    const sharedTitle = params.get('title');
+
+    if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
+      processIncomingIntel(sharedUrl, sharedTitle || undefined);
+      
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [surrealStatus]); // Re-run when DB connects to ensure we can save
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
     url: getEnv('VITE_SURREALDB_URL'),
     ns: getEnv('VITE_SURREALDB_NS', 'test'),
@@ -364,6 +501,7 @@ export default function App() {
 
   // Library View State
   const [librarySearch, setLibrarySearch] = useState('');
+  const [libraryTab, setLibraryTab] = useState<'all' | 'intel'>('all');
   const [libraryType, setLibraryType] = useState<string | null>(null);
   const [libraryArea, setLibraryArea] = useState<string | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<string | null>(null);
@@ -961,6 +1099,22 @@ export default function App() {
     else setBlockerInput('');
   };
 
+  const handleDeleteIntel = async (id: string) => {
+    setDailyIntels(prev => prev.filter(i => i.id !== id));
+    if (surrealStatus === 'connected') {
+      try {
+        await surrealService.deleteDailyIntel(id);
+      } catch (err) {
+        console.error('Error deleting intel:', err);
+      }
+    }
+  };
+
+  const handleUpdateIntelStatus = async (id: string, status: any) => {
+    // Logic for updating status if needed, or activating builder plans
+    showNotification("Builder Plan aktiviert!", "success");
+  };
+
   const handleRemovePinnedItem = (id: string, type: 'intel' | 'blocker') => {
     if (type === 'intel') {
       const updated = pinnedIntelItems.filter(i => i.id !== id);
@@ -1371,6 +1525,11 @@ export default function App() {
 
         const storedMemoryConcepts = await surrealService.getMemoryConcepts();
         console.log('Stored memory concepts loaded from SurrealDB:', storedMemoryConcepts);
+
+        const storedDailyIntels = await surrealService.getDailyIntels();
+        if (storedDailyIntels && storedDailyIntels.length > 0) {
+          setDailyIntels(storedDailyIntels);
+        }
 
         if (storedMemoryConcepts && storedMemoryConcepts.length > 0) {
           setMemoryConcepts(prev => {
@@ -2492,6 +2651,27 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                     Zentraler Wissensraum & Strategisches Archiv
                   </p>
+                  <div className="flex items-center bg-white/[0.03] rounded-xl p-1 border border-white/5 ml-6">
+                    <button 
+                      onClick={() => setLibraryTab('all')}
+                      className={cn(
+                        "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                        libraryTab === 'all' ? "bg-primary text-slate-900" : "text-slate-500 hover:text-slate-300"
+                      )}
+                    >
+                      Library
+                    </button>
+                    <button 
+                      onClick={() => setLibraryTab('intel')}
+                      className={cn(
+                        "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                        libraryTab === 'intel' ? "bg-amber-500 text-slate-900" : "text-slate-500 hover:text-slate-300"
+                      )}
+                    >
+                      <Youtube className="w-3 h-3" />
+                      Daily Intel
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="flex items-center gap-3">
@@ -2524,8 +2704,9 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
 
               {/* Library Grid Layout */}
               <div className="flex-1 flex overflow-hidden">
-                
-                {/* 1. LEFT COLUMN: FILTERS */}
+                {libraryTab === 'all' ? (
+                  <>
+                    {/* 1. LEFT COLUMN: FILTERS */}
                 <aside className="hidden lg:flex w-72 border-r border-white/5 flex-col bg-slate-900/10">
                   <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
                     
@@ -3049,6 +3230,27 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
                     )}
                   </AnimatePresence>
                 </aside>
+                  </>
+                ) : (
+                  <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
+                    <div className="max-w-4xl mx-auto">
+                      <div className="mb-8">
+                        <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
+                          <Sparkles className="w-6 h-6 text-amber-400" />
+                          DAILY INTEL
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">
+                          Morgendlicher Strategie-Feed deiner YouTube-Quellen
+                        </p>
+                      </div>
+                      <IntelFeed 
+                        items={dailyIntels} 
+                        onDelete={handleDeleteIntel}
+                        onUpdateStatus={handleUpdateIntelStatus}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
