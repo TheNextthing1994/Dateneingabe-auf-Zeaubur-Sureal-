@@ -44,9 +44,10 @@ interface IntelFeedProps {
   items: DailyIntel[];
   onDelete: (id: string) => void;
   onUpdateStatus: (id: string, status: string) => void;
+  onAddDemo?: () => void;
 }
 
-export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateStatus }) => {
+export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateStatus, onAddDemo }) => {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
@@ -54,7 +55,14 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
           <Youtube className="w-8 h-8 opacity-20" />
         </div>
         <p className="text-sm font-medium uppercase tracking-widest">No Daily Intel Yet</p>
-        <p className="text-xs mt-2 opacity-50">Share a YouTube link to trigger the Agentic Workflow</p>
+        <p className="text-xs mt-2 opacity-50 mb-8">Share a YouTube link to trigger the Agentic Workflow</p>
+        
+        <button 
+          onClick={onAddDemo}
+          className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+        >
+          Demo-Daten laden (UI Test)
+        </button>
       </div>
     );
   }

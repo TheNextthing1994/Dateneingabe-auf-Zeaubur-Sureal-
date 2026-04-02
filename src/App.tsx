@@ -339,16 +339,20 @@ export default function App() {
   
   const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>([]);
   const [isProcessingIntel, setIsProcessingIntel] = useState(false);
+  const processedUrls = useRef<Set<string>>(new Set());
 
   const processIncomingIntel = async (url: string, title?: string) => {
     if (isProcessingIntel) return;
+    if (processedUrls.current.has(url)) return;
+    
     setIsProcessingIntel(true);
+    processedUrls.current.add(url);
     
     // Immediate feedback
     showNotification("Gefangen! Der D.T. analysiert im Hintergrund...", 'success');
 
     try {
-      const apiKey = getEnv('VITE_GEMINI_API_KEY') || (process.env as any).GEMINI_API_KEY;
+      const apiKey = (process.env as any).GEMINI_API_KEY || getEnv('VITE_GEMINI_API_KEY');
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY is missing');
       }
@@ -365,6 +369,8 @@ export default function App() {
 
       let response;
       try {
+        console.log('Attempting AI analysis with urlContext for:', url);
+        // Try with urlContext first
         response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
           contents: `Du bist das autonome Analyse-Team des Digital Twin (D.T.). 
@@ -426,7 +432,7 @@ export default function App() {
           }
         });
       } catch (aiErr: any) {
-        console.error('AI Call failed with urlContext, retrying without it...', aiErr);
+        console.warn('AI Call failed with urlContext, retrying without it...', aiErr);
         // Fallback: Try without urlContext if it fails (e.g. video restricted or no transcript)
         response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
@@ -545,18 +551,28 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (surrealStatus === 'connected') {
+      surrealService.getDailyIntels().then(items => {
+        setDailyIntels(items || []);
+      });
+    }
+  }, [surrealStatus]);
+
+  useEffect(() => {
     // Handle Web Share Target
     const params = new URLSearchParams(window.location.search);
     const sharedUrl = params.get('url') || params.get('text');
     const sharedTitle = params.get('title');
 
     if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
-      processIncomingIntel(sharedUrl, sharedTitle || undefined);
+      if (!processedUrls.current.has(sharedUrl)) {
+        processIncomingIntel(sharedUrl, sharedTitle || undefined);
+      }
       
       // Clean up URL parameters
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [surrealStatus]); // Re-run when DB connects to ensure we can save
+  }, []); // Only run once on mount
   const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
     url: getEnv('VITE_SURREALDB_URL'),
     ns: getEnv('VITE_SURREALDB_NS', 'test'),
@@ -906,13 +922,12 @@ export default function App() {
     console.log('VITE_SURREALDB_URL from getEnv:', getEnv('VITE_SURREALDB_URL'));
     console.log('-------------------------');
     
-    const key = getEnv('VITE_GEMINI_API_KEY');
-    const keyStatus = key ? 'Defined' : 'Undefined';
+    const key = (process.env as any).GEMINI_API_KEY || getEnv('VITE_GEMINI_API_KEY');
+    const keyStatus = key ? 'Gefunden' : 'Fehlt';
     console.log('Gemini API Key status:', keyStatus);
     
-    // If key is missing, show a prominent log
     if (!key) {
-      console.error('CRITICAL: VITE_GEMINI_API_KEY is missing! Analysis will fail.');
+      showNotification("System-Warnung: Gemini API Key fehlt. Analyse deaktiviert.", 'warn');
     }
   }, []);
 
@@ -1174,6 +1189,33 @@ export default function App() {
         console.error('Error deleting intel:', err);
       }
     }
+  };
+
+  const handleLoadDemoIntel = () => {
+    const demoIntel: DailyIntel = {
+      id: `demo_${Date.now()}`,
+      url: 'https://youtube.com/watch?v=demo',
+      title: 'Demo: AI Automation Strategy 2026',
+      timestamp: Date.now(),
+      supreme_decision: 'build',
+      analyst_report: {
+        core_points: ['AI Agents are the new apps', 'SurrealDB for multi-model data', 'Vite for ultra-fast DX'],
+        relevance_score: 9.5,
+        goal_alignment: 'Matches Tech Mastery & Automation goals'
+      },
+      builder_plan: {
+        steps: ['Initialize SurrealDB', 'Setup Gemini 3 Flash', 'Deploy to Zeabur'],
+        tech_stack_notes: 'Focus on low-latency and real-time updates'
+      },
+      navigator_infographic: {
+        headline: 'THE AGENTIC REVOLUTION',
+        visual_summary: ['Autonome Analyse-Teams', 'Echtzeit-Intel-Feed', 'Automatisierte Workflows'],
+        punchline: 'Der D.T. baut sich selbst.'
+      },
+      chronicle_log: ['Analyst Officer hat Relevanz geprüft', 'Supreme Officer hat Build-Befehl erteilt']
+    };
+    setDailyIntels([demoIntel]);
+    showNotification("Demo-Daten geladen", 'info');
   };
 
   const handleUpdateIntelStatus = async (id: string, status: any) => {
@@ -3313,6 +3355,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
                         items={dailyIntels} 
                         onDelete={handleDeleteIntel}
                         onUpdateStatus={handleUpdateIntelStatus}
+                        onAddDemo={handleLoadDemoIntel}
                       />
                     </div>
                   </div>
