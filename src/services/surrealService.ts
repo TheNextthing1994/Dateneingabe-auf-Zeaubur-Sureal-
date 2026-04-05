@@ -86,9 +86,14 @@ class SurrealService {
    */
   async saveSeed(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving seed to SurrealDB (RAW QUERY):', data.id);
-    // Using raw query to bypass SDK validation
-    return await (this.db as any).query('INSERT INTO seeds ' + JSON.stringify(data));
+    const fullId = data.id.includes(':') ? data.id : `seeds:${data.id}`;
+    console.log('Saving seed to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save seed failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getSeeds(): Promise<any[]> {
@@ -129,10 +134,8 @@ class SurrealService {
         return { ...item, id: fullId, rawId: fullId, category };
       }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
       console.error('Error in getSeeds:', err);
-      if (err?.message?.includes('does not exist')) {
-        return [];
-      }
       throw err;
     }
   }
@@ -143,9 +146,14 @@ class SurrealService {
    */
   async saveMission(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving mission to SurrealDB (RAW QUERY):', data.id);
-    // Using raw query to bypass SDK validation
-    return await (this.db as any).query('INSERT INTO missions ' + JSON.stringify(data));
+    const fullId = data.id.includes(':') ? data.id : `missions:${data.id}`;
+    console.log('Saving mission to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save mission failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getMissions(): Promise<any[]> {
@@ -184,10 +192,9 @@ class SurrealService {
 
   async updateSeed(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Updating seed in SurrealDB:', recordId);
     const fullId = recordId.includes(':') ? recordId : `seeds:${recordId}`;
-    // Using UPDATE ... MERGE to only update provided fields
-    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    console.log('Updating seed in SurrealDB:', fullId);
+    return await (this.db as any).merge(new StringRecordId(fullId), data);
   }
 
   async deleteMission(recordId: string) {
@@ -202,8 +209,14 @@ class SurrealService {
    */
   async saveWeeklyTask(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving weekly task to SurrealDB (RAW QUERY):', data.id);
-    return await (this.db as any).query('INSERT INTO weekly_tasks ' + JSON.stringify(data));
+    const fullId = data.id.includes(':') ? data.id : `weekly_tasks:${data.id}`;
+    console.log('Saving weekly task to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save weekly task failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getWeeklyTasks(): Promise<any[]> {
@@ -230,6 +243,7 @@ class SurrealService {
   async updateWeeklyTask(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `weekly_tasks:${recordId}`;
+    console.log('Updating weekly task in SurrealDB:', fullId);
     return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
   }
 
@@ -244,8 +258,14 @@ class SurrealService {
    */
   async saveMemoryConcept(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving memory concept to SurrealDB (RAW QUERY):', data.id);
-    return await (this.db as any).query('INSERT INTO memory_concepts ' + JSON.stringify(data));
+    const fullId = data.id.includes(':') ? data.id : `memory_concepts:${data.id}`;
+    console.log('Saving memory concept to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save memory concept failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getMemoryConcepts(): Promise<any[]> {
@@ -293,8 +313,14 @@ class SurrealService {
    */
   async saveBillboardItem(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving billboard item to SurrealDB:', data.id);
-    return await (this.db as any).query('INSERT INTO billboard_items ' + JSON.stringify(data));
+    const fullId = data.id.includes(':') ? data.id : `billboard_items:${data.id}`;
+    console.log('Saving billboard item to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save billboard item failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getBillboardItems(): Promise<any[]> {
@@ -368,9 +394,14 @@ class SurrealService {
    */
   async saveIntelSeed(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('Saving intel seed to SurrealDB:', data.id);
     const fullId = data.id.includes(':') ? data.id : `intel_seeds:${data.id}`;
-    return await (this.db as any).query('INSERT INTO intel_seeds $data', { data: { ...data, id: fullId } });
+    console.log('Saving intel seed to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save intel seed failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getIntelSeeds(): Promise<any[]> {
@@ -397,7 +428,8 @@ class SurrealService {
   async updateIntelSeed(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `intel_seeds:${recordId}`;
-    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    console.log('Updating intel seed in SurrealDB:', fullId);
+    return await (this.db as any).merge(new StringRecordId(fullId), data);
   }
 
   async deleteIntelSeed(recordId: string) {
@@ -411,15 +443,23 @@ class SurrealService {
    */
   async saveDailyIntel(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    console.log('SurrealDB: Saving daily intel:', data.id);
+    const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
+    console.log('SurrealDB: Saving daily intel to:', fullId);
     try {
-      const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
-      const result = await (this.db as any).query('INSERT INTO INTEL_FEED $data', { data: { ...data, id: fullId } });
+      // Using create with StringRecordId is more robust
+      const result = await (this.db as any).create(new StringRecordId(fullId), data);
       console.log('SurrealDB: Save result:', result);
       return result;
     } catch (err) {
       console.error('SurrealDB: Save failed:', err);
-      throw err;
+      // Fallback to query if create fails (e.g. if it already exists)
+      try {
+        console.log('SurrealDB: Attempting fallback update for:', fullId);
+        return await (this.db as any).query(`UPDATE ${fullId} CONTENT $data`, { data });
+      } catch (innerErr) {
+        console.error('SurrealDB: Fallback failed:', innerErr);
+        throw err;
+      }
     }
   }
 
@@ -440,6 +480,7 @@ class SurrealService {
       });
     } catch (err: any) {
       if (err?.message?.includes('does not exist')) return [];
+      console.error('SurrealDB: Fetch failed:', err);
       return [];
     }
   }
@@ -453,7 +494,8 @@ class SurrealService {
   async updateDailyIntel(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
-    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    console.log('SurrealDB: Updating daily intel:', fullId);
+    return await (this.db as any).merge(new StringRecordId(fullId), data);
   }
 
   async getLogs(): Promise<any[]> {

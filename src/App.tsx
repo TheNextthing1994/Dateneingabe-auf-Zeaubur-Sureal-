@@ -750,7 +750,7 @@ export default function App() {
 
     // Create more realistic relationships based on shared keywords or pillars
     analyzedItems.forEach((item, index) => {
-      const itemKeywords = item.text.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+      const itemKeywords = (item.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 4);
       
       analyzedItems.forEach((other, otherIndex) => {
         if (index === otherIndex) return;
@@ -764,7 +764,7 @@ export default function App() {
         }
 
         // Check for shared keywords
-        const otherKeywords = other.text.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+        const otherKeywords = (other.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 4);
         const sharedKeywords = itemKeywords.filter(k => otherKeywords.includes(k));
         
         if (sharedKeywords.length > 0) {
@@ -807,7 +807,7 @@ export default function App() {
       });
       const matchesImpact = item.score >= mapFilters.minImpact;
       const matchesArea = !mapFilters.area || item.pillarId === mapFilters.area;
-      const matchesSearch = !mapFilters.search || item.text.toLowerCase().includes(mapFilters.search.toLowerCase());
+      const matchesSearch = !mapFilters.search || (item.text || '').toLowerCase().includes(mapFilters.search.toLowerCase());
       
       return matchesType && matchesImpact && matchesArea && matchesSearch;
     });
@@ -965,7 +965,7 @@ export default function App() {
     if (activeView === 'vault') {
       return baseItems.filter(item => {
         const matchesSearch = !librarySearch || 
-          item.text.toLowerCase().includes(librarySearch.toLowerCase()) ||
+          (item.text || '').toLowerCase().includes(librarySearch.toLowerCase()) ||
           (item.reasoning && item.reasoning.toLowerCase().includes(librarySearch.toLowerCase()));
         
         const matchesType = !libraryType || (
@@ -1034,18 +1034,18 @@ export default function App() {
     
     // 1. Recurring Themes (Mocked for now based on keywords, could be improved)
     const themes = [
-      { name: 'Digital Twin', count: items.filter(i => i.text.toLowerCase().includes('twin')).length },
-      { name: 'Automatisierung', count: items.filter(i => i.text.toLowerCase().includes('auto')).length },
-      { name: 'Monetarisierung', count: items.filter(i => i.text.toLowerCase().includes('geld') || i.text.toLowerCase().includes('euro')).length },
+      { name: 'Digital Twin', count: items.filter(i => (i.text || '').toLowerCase().includes('twin')).length },
+      { name: 'Automatisierung', count: items.filter(i => (i.text || '').toLowerCase().includes('auto')).length },
+      { name: 'Monetarisierung', count: items.filter(i => (i.text || '').toLowerCase().includes('geld') || (i.text || '').toLowerCase().includes('euro')).length },
       { name: 'Islam/Sirat', count: items.filter(i => i.pillarId === 'islam').length },
-      { name: 'VayTube', count: items.filter(i => i.text.toLowerCase().includes('tube')).length },
+      { name: 'VayTube', count: items.filter(i => (i.text || '').toLowerCase().includes('tube')).length },
     ].filter(t => t.count > 0).sort((a, b) => b.count - a.count);
 
     // 2. Forgotten Strong Seeds
     const forgotten = items.filter(i => i.score >= 8 && (Date.now() - i.timestamp > 14 * 24 * 60 * 60 * 1000));
 
     // 3. Projects without Next Step
-    const gapProjects = items.filter(i => i.vaultId === 'projekte' && (!i.nextStep || i.nextStep.toLowerCase() === 'keine'));
+    const gapProjects = items.filter(i => i.vaultId === 'projekte' && (!i.nextStep || (i.nextStep || '').toLowerCase() === 'keine'));
 
     // 4. Insights without Application
     const unusedInsights = items.filter(i => i.vaultId === 'erkenntnisse' && i.status === 'Offen');
@@ -2056,7 +2056,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
     if (surrealStatus === 'connected') {
       try {
         await surrealService.saveSeed(newItem);
-        showNotification(`[Live] ${item.text.substring(0, 20)}... im Vault gespeichert.`, 'success');
+        showNotification(`[Live] ${(item.text || '').substring(0, 20)}... im Vault gespeichert.`, 'success');
       } catch (err) {
         console.error('Live Save Error:', err);
         showNotification('Fehler beim Speichern via Live Agent.', 'warn');
@@ -2077,7 +2077,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
     if (surrealStatus === 'connected') {
       try {
         await surrealService.saveWeeklyTask(newTask);
-        showNotification(`Wochenaufgabe "${text.substring(0, 20)}..." gespeichert.`, 'success');
+        showNotification(`Wochenaufgabe "${(text || '').substring(0, 20)}..." gespeichert.`, 'success');
       } catch (err) {
         console.error('Live Weekly Task Save Error:', err);
         showNotification('Fehler beim Speichern der Wochenaufgabe.', 'warn');
@@ -2149,7 +2149,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
       setLogs(prev => [...prev, {
         id: Date.now().toString(),
         sender: 'System',
-        text: `Seed gelöscht: ${item.text.substring(0, 30)}...`,
+        text: `Seed gelöscht: ${(item.text || '').substring(0, 30)}...`,
         timestamp: Date.now()
       }]);
     } catch (err) {
@@ -3764,7 +3764,7 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
                                   textAnchor="middle"
                                   className="text-[9px] font-bold fill-slate-400 pointer-events-none uppercase tracking-tighter"
                                 >
-                                  {item.text.substring(0, 15)}...
+                                  {(item.text || '').substring(0, 15)}...
                                 </text>
                               </motion.g>
                             );

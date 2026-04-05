@@ -86,7 +86,7 @@ export function MapView({
 
     // Create more realistic relationships based on shared keywords or pillars
     analyzedItems.forEach((item, index) => {
-      const itemKeywords = item.text.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+      const itemKeywords = (item.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 4);
       
       analyzedItems.forEach((other, otherIndex) => {
         if (index === otherIndex) return;
@@ -100,7 +100,7 @@ export function MapView({
         }
 
         // Check for shared keywords
-        const otherKeywords = other.text.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+        const otherKeywords = (other.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 4);
         const sharedKeywords = itemKeywords.filter(k => otherKeywords.includes(k));
         
         if (sharedKeywords.length > 0) {
@@ -143,7 +143,7 @@ export function MapView({
       });
       const matchesImpact = item.score >= mapFilters.minImpact;
       const matchesArea = !mapFilters.area || item.pillarId === mapFilters.area;
-      const matchesSearch = !mapFilters.search || item.text.toLowerCase().includes(mapFilters.search.toLowerCase());
+      const matchesSearch = !mapFilters.search || (item.text || '').toLowerCase().includes(mapFilters.search.toLowerCase());
       
       return matchesType && matchesImpact && matchesArea && matchesSearch;
     });
@@ -671,7 +671,7 @@ export function MapView({
                           textAnchor="middle"
                           className="text-[9px] font-bold fill-slate-400 pointer-events-none uppercase tracking-tighter"
                         >
-                          {item.text.substring(0, 15)}...
+                          {(item.text || '').substring(0, 15)}...
                         </text>
                       </motion.g>
                     );
