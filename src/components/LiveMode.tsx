@@ -502,6 +502,14 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
     }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+      if (videoRef.current.parentNode) {
+        videoRef.current.parentNode.removeChild(videoRef.current);
+      }
+      videoRef.current = null;
+    }
     if (screenCaptureIntervalRef.current) {
       clearInterval(screenCaptureIntervalRef.current);
     }
@@ -586,21 +594,30 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       videoRef.current = document.createElement('video');
       videoRef.current.autoplay = true;
       videoRef.current.muted = true;
+      videoRef.current.setAttribute('playsinline', '');
+      videoRef.current.style.display = 'none';
+      document.body.appendChild(videoRef.current);
     }
     if (!canvasRef.current) {
       canvasRef.current = document.createElement('canvas');
     }
 
-    videoRef.current.srcObject = screenStreamRef.current;
+    const video = videoRef.current;
+    if (video.srcObject !== screenStreamRef.current) {
+      video.srcObject = screenStreamRef.current;
+    }
+    
+    // Ensure video is playing
+    video.play().catch(e => console.error("Error playing screen video:", e));
     
     screenCaptureIntervalRef.current = setInterval(() => {
-      if (!sessionRef.current || !isActiveRef.current || !screenStreamRef.current || !videoRef.current || !canvasRef.current) return;
+      if (!sessionRef.current || !isActiveRef.current || !screenStreamRef.current || !video || !canvasRef.current) return;
       
-      const video = videoRef.current;
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d');
       
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
+      // Ensure video is playing and has content
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
         // Scale down for performance
         const scale = 0.5;
         canvas.width = video.videoWidth * scale;
@@ -610,9 +627,13 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
         
         const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
         
-        sessionRef.current.sendRealtimeInput({
-          video: { data: base64Data, mimeType: 'image/jpeg' }
-        });
+        if (base64Data) {
+          sessionRef.current.sendRealtimeInput({
+            video: { data: base64Data, mimeType: 'image/jpeg' }
+          });
+        }
+      } else if (video.paused) {
+        video.play().catch(() => {});
       }
     }, 1000); // Send frame every second
   };
