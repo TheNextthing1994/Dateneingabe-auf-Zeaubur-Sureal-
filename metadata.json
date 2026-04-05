@@ -2,6 +2,7 @@
   "name": "Digital Twin",
   "description": "Ein Life Command Center zur Analyse und Filterung von Lebens-Inputs nach der G.C. Methode.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "display-capture"
   ]
 }

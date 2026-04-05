@@ -12,7 +12,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  X
+  X,
+  Monitor,
+  MonitorOff
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
@@ -57,6 +59,10 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose, onSa
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const screenCaptureIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const isActiveRef = useRef(false);
@@ -65,6 +71,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose, onSa
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const [volume, setVolume] = useState<number[]>(new Array(12).fill(10));
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const stats = React.useMemo(() => {
     const now = Date.now();
@@ -220,6 +227,9 @@ Du kannst jetzt Erkenntnisse, Ideen oder Projekte DIREKT in den Vault (SurrealDB
 Nutze dafür das Tool 'saveToVault', wenn der Nutzer dich darum bittet (z.B. "Kern, speichere das als Game Changer").
 Frage im Zweifel nach der Kategorie (GAME CHANGER, SOLID WORK, NOISE) oder der Säule (mindset, business, health, relationships, finances).
 
+VISUELLE WAHRNEHMUNG:
+Wenn der Nutzer seinen Bildschirm teilt, kannst du diesen sehen. Nutze die visuellen Informationen, um den Kontext besser zu verstehen und präzisere Ratschläge zu geben.
+
 DEIN STIL:
 - Sei präzise, analytisch und direkt.
 - Keine unnötigen Höflichkeitsfloskeln.
@@ -298,6 +308,11 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             setIsStarting(false);
             isActiveRef.current = true;
             console.log("Live session opened");
+            
+            // Start screen capture loop if already sharing
+            if (isScreenSharing && screenStreamRef.current) {
+              startScreenCaptureLoop();
+            }
           },
           onmessage: async (message: LiveServerMessage) => {
             // Handle tool calls
@@ -484,6 +499,12 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (screenCaptureIntervalRef.current) {
+      clearInterval(screenCaptureIntervalRef.current);
+    }
     if (processorRef.current) {
       processorRef.current.disconnect();
     }
@@ -508,11 +529,92 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     processorRef.current = null;
     analyserRef.current = null;
     streamRef.current = null;
+    screenStreamRef.current = null;
+    screenCaptureIntervalRef.current = null;
     sessionRef.current = null;
     isCleaningUpRef.current = false;
     setIsMuted(false);
+    setIsScreenSharing(false);
     isMutedRef.current = false;
     setVolume(new Array(12).fill(10));
+  };
+
+  const startScreenShare = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always"
+        } as any,
+        audio: false
+      });
+      
+      screenStreamRef.current = stream;
+      setIsScreenSharing(true);
+      
+      // Stop sharing if user clicks "Stop sharing" in browser UI
+      stream.getVideoTracks()[0].onended = () => {
+        stopScreenShare();
+      };
+
+      // Start capturing frames if session is active
+      if (status === 'active' && sessionRef.current) {
+        startScreenCaptureLoop();
+      }
+    } catch (err) {
+      console.error("Error starting screen share:", err);
+      setIsScreenSharing(false);
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+    }
+    if (screenCaptureIntervalRef.current) {
+      clearInterval(screenCaptureIntervalRef.current);
+      screenCaptureIntervalRef.current = null;
+    }
+    setIsScreenSharing(false);
+  };
+
+  const startScreenCaptureLoop = () => {
+    if (screenCaptureIntervalRef.current) clearInterval(screenCaptureIntervalRef.current);
+    
+    // Create hidden video and canvas if they don't exist
+    if (!videoRef.current) {
+      videoRef.current = document.createElement('video');
+      videoRef.current.autoplay = true;
+      videoRef.current.muted = true;
+    }
+    if (!canvasRef.current) {
+      canvasRef.current = document.createElement('canvas');
+    }
+
+    videoRef.current.srcObject = screenStreamRef.current;
+    
+    screenCaptureIntervalRef.current = setInterval(() => {
+      if (!sessionRef.current || !isActiveRef.current || !screenStreamRef.current || !videoRef.current || !canvasRef.current) return;
+      
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        // Scale down for performance
+        const scale = 0.5;
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        
+        context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        
+        sessionRef.current.sendRealtimeInput({
+          video: { data: base64Data, mimeType: 'image/jpeg' }
+        });
+      }
+    }, 1000); // Send frame every second
   };
 
   const startAnalysis = () => {
@@ -723,6 +825,22 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             </button>
 
             <div className="flex items-center justify-center gap-4 sm:gap-6">
+              <button 
+                onClick={() => {
+                  if (isScreenSharing) {
+                    stopScreenShare();
+                  } else {
+                    startScreenShare();
+                  }
+                }}
+                className={cn(
+                  "p-4 rounded-full border transition-all flex items-center justify-center",
+                  isScreenSharing ? "bg-blue-500/20 border-blue-500 text-blue-500" : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                )}
+                title={isScreenSharing ? "Bildschirmfreigabe beenden" : "Bildschirm teilen"}
+              >
+                {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
+              </button>
               <button 
                 onClick={() => setShowHistory(true)}
                 className={cn(
