@@ -435,18 +435,26 @@ export default function App() {
           setDailyIntels(prev => [updatedIntel, ...prev.filter(i => i.id !== targetId)]);
           
           if (surrealConfig.url) {
-            // Wait up to 5 seconds for connection if it's still connecting
+            console.log('SurrealDB: Attempting to update combined intel. Waiting for connection...');
+            // Wait up to 10 seconds for connection if it's still connecting
             let attempts = 0;
-            while (!surrealService.isConnected() && attempts < 10) {
+            while (!surrealService.isConnected() && attempts < 20) {
               await new Promise(r => setTimeout(r, 500));
               attempts++;
             }
             
             if (surrealService.isConnected()) {
-              await surrealService.updateDailyIntel(targetId, updatedIntel);
-              console.log('SurrealDB: Updated intel successfully');
+              try {
+                await surrealService.updateDailyIntel(targetId, updatedIntel);
+                console.log('SurrealDB: Updated intel successfully');
+                showNotification("Intel in SurrealDB aktualisiert", 'success');
+              } catch (updateErr) {
+                console.error('SurrealDB: Update failed in processIncomingIntel:', updateErr);
+                showNotification("Fehler beim Aktualisieren in SurrealDB", 'warn');
+              }
             } else {
               console.warn('SurrealDB: Could not update intel because connection was not established in time');
+              showNotification("SurrealDB nicht bereit - Update nur lokal", 'warn');
             }
           }
           showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic.headline}`, 'success');
@@ -471,20 +479,29 @@ export default function App() {
       
       // Ensure we save to SurrealDB if configured
       if (surrealConfig.url) {
-        // Wait up to 5 seconds for connection if it's still connecting
+        console.log('SurrealDB: Attempting to save shared intel. Waiting for connection...');
+        // Wait up to 10 seconds for connection if it's still connecting
         let attempts = 0;
-        while (!surrealService.isConnected() && attempts < 10) {
+        while (!surrealService.isConnected() && attempts < 20) {
           await new Promise(r => setTimeout(r, 500));
           attempts++;
         }
         
         if (surrealService.isConnected()) {
-          await surrealService.saveDailyIntel(newIntel);
-          console.log('SurrealDB: Saved new intel successfully');
+          try {
+            await surrealService.saveDailyIntel(newIntel);
+            console.log('SurrealDB: Saved new intel successfully');
+            showNotification("Intel erfolgreich in SurrealDB gespeichert", 'success');
+          } catch (saveErr) {
+            console.error('SurrealDB: Save failed in processIncomingIntel:', saveErr);
+            showNotification("Fehler beim Speichern in SurrealDB", 'warn');
+          }
         } else {
           console.warn('SurrealDB: Could not save intel because connection was not established in time');
           showNotification("SurrealDB nicht bereit - Intel nur temporär gespeichert", 'warn');
         }
+      } else {
+        console.warn('SurrealDB: No URL configured, skipping save');
       }
 
       showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic.headline}`, 'success');
@@ -543,13 +560,30 @@ export default function App() {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []); // Only run once on mount
-  const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>({
-    url: getEnv('VITE_SURREALDB_URL'),
-    ns: getEnv('VITE_SURREALDB_NS', 'test'),
-    db: getEnv('VITE_SURREALDB_DB', 'test'),
-    user: getEnv('VITE_SURREALDB_USER'),
-    pass: getEnv('VITE_SURREALDB_PASS')
+  const [surrealConfig, setSurrealConfig] = useState<SurrealConfig>(() => {
+    const saved = localStorage.getItem('dt_surreal_config');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved surreal config:', e);
+      }
+    }
+    return {
+      url: getEnv('VITE_SURREALDB_URL'),
+      ns: getEnv('VITE_SURREALDB_NS', 'test'),
+      db: getEnv('VITE_SURREALDB_DB', 'test'),
+      user: getEnv('VITE_SURREALDB_USER'),
+      pass: getEnv('VITE_SURREALDB_PASS')
+    };
   });
+
+  // Persist surrealConfig to localStorage
+  useEffect(() => {
+    if (surrealConfig.url) {
+      localStorage.setItem('dt_surreal_config', JSON.stringify(surrealConfig));
+    }
+  }, [surrealConfig]);
 
   // Library View State
   const [librarySearch, setLibrarySearch] = useState('');
