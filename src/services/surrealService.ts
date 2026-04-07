@@ -444,43 +444,41 @@ class SurrealService {
   async saveDailyIntel(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
-    console.log('SurrealDB: Saving daily intel to:', fullId);
+    console.log('SurrealDB: Upserting daily intel to:', fullId);
     try {
-      // Using create with StringRecordId is more robust
-      const result = await (this.db as any).create(new StringRecordId(fullId), data);
-      console.log('SurrealDB: Save result:', result);
+      // Using UPSERT is more robust as it handles both create and update
+      const result = await (this.db as any).query(`UPSERT ${fullId} CONTENT $data`, { data });
+      console.log('SurrealDB: Upsert result:', result);
       return result;
     } catch (err) {
-      console.error('SurrealDB: Save failed:', err);
-      // Fallback to query if create fails (e.g. if it already exists)
-      try {
-        console.log('SurrealDB: Attempting fallback update for:', fullId);
-        return await (this.db as any).query(`UPDATE ${fullId} CONTENT $data`, { data });
-      } catch (innerErr) {
-        console.error('SurrealDB: Fallback failed:', innerErr);
-        throw err;
-      }
+      console.error('SurrealDB: Upsert failed:', err);
+      throw err;
     }
   }
 
   async getDailyIntels(): Promise<any[]> {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     try {
-      const results = await (this.db as any).query('SELECT * FROM INTEL_FEED ORDER BY timestamp DESC');
+      // Query without ORDER BY first to see if it works at all
+      const results = await (this.db as any).query('SELECT * FROM INTEL_FEED');
       let records: any[] = [];
+      
       if (Array.isArray(results)) {
-        records = results[0]?.result || results[0] || [];
+        // results is [ { result: [...], status: 'OK', time: '...' } ]
+        records = results[0]?.result || [];
       } else if (results && typeof results === 'object') {
         records = (results as any).result || [];
       }
+
       if (!Array.isArray(records)) return [];
+
       return records.map(item => {
-        const fullId = item.id.toString();
+        // In SurrealDB 2.x/3.x, id is a RecordId object, use .toString()
+        const fullId = item.id ? item.id.toString() : '';
         return { ...item, id: fullId, rawId: fullId };
-      });
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     } catch (err: any) {
-      if (err?.message?.includes('does not exist')) return [];
-      console.error('SurrealDB: Fetch failed:', err);
+      console.error('SurrealDB: getDailyIntels failed:', err);
       return [];
     }
   }
@@ -488,14 +486,14 @@ class SurrealService {
   async deleteDailyIntel(recordId: string) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
-    return await this.db.delete(new StringRecordId(fullId));
+    return await (this.db as any).query(`DELETE ${fullId}`);
   }
 
   async updateDailyIntel(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
-    console.log('SurrealDB: Updating daily intel:', fullId);
-    return await (this.db as any).merge(new StringRecordId(fullId), data);
+    console.log('SurrealDB: Updating daily intel via UPSERT:', fullId);
+    return await (this.db as any).query(`UPSERT ${fullId} MERGE $data`, { data });
   }
 
   async getLogs(): Promise<any[]> {
