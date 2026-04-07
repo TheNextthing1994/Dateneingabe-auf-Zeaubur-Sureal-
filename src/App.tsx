@@ -85,10 +85,22 @@ import {
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import * as d3 from 'd3';
+import { 
+  VAULTS, 
+  OPERATIVE_TILES, 
+  INITIAL_PILLARS, 
+  LIBRARY_TYPES, 
+  LIBRARY_AREAS, 
+  LIBRARY_STATUS, 
+  LIBRARY_IMPACTS 
+} from './constants';
 import { LiveMode } from './components/LiveMode';
 import { KernView } from './components/KernView';
 import { VaultView } from './components/VaultView';
 import { MapView } from './components/MapView';
+import { BillboardCard } from './components/BillboardCard';
+import { useSeeds } from './hooks/useSeeds';
+import { useChat } from './hooks/useChat';
 import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
 import { IntelFeed, DailyIntel } from './components/IntelFeed';
@@ -172,124 +184,6 @@ interface WeeklyTask {
   timestamp: number;
 }
 
-const VAULTS = [
-  { id: 'ideen', name: 'IDEEN DECK', icon: '💡', color: '#8b5cf6' },
-  { id: 'projekte', name: 'PROJEKT AKTEN', icon: '📁', color: '#3b82f6' },
-  { id: 'kunden', name: 'KUNDEN ANFRAGEN', icon: '🤝', color: '#10b981' },
-  { id: 'ziele', name: 'MISSIONS ZIELE', icon: '🎯', color: '#ef4444' },
-  { id: 'workflows', name: 'STRATEGIEN / WORKFLOWS', icon: '⚙️', color: '#10b981' },
-  { id: 'academy', name: 'ACADEMY & SUBS', icon: '🎓', color: '#f59e0b' },
-  { id: 'erkenntnisse', name: 'ERKENNTNISSE', icon: '🧠', color: '#f59e0b' },
-  { id: 'toolbox', name: 'TOOLBOX', icon: '🧰', color: '#64748b' }
-] as const;
-
-const OPERATIVE_TILES = [
-  { id: 'offen', name: 'UNVERARBEITETE SEEDS', icon: '🌱', color: '#8b5cf6', status: 'Offen' },
-  { id: 'in_arbeit', name: 'AKTIVE MISSIONEN', icon: '🚀', color: '#3b82f6', status: 'In Arbeit' },
-  { id: 'blockiert', name: 'OFFENE BLOCKER', icon: '🛑', color: '#ef4444', status: 'Blockiert' }
-] as const;
-
-const INITIAL_PILLARS: Pillar[] = [
-  { id: 'health', name: 'Gesundheit', icon: '🌿', color: '#3b82f6' },
-  { id: 'dev', name: 'Pers. Entwicklung', icon: '📚', color: '#f59e0b' },
-  { id: 'finance', name: 'Business & Finanzen', icon: '💰', color: '#10b981' },
-  { id: 'mindset', name: 'Mentalität', icon: '🧠', color: '#8b5cf6' },
-  { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
-];
-
-const LIBRARY_TYPES = ['Seed', 'Projekt', 'Erkenntnis', 'Mission', 'Workflow'];
-const LIBRARY_AREAS = [
-  { id: 'health', name: 'Gesundheit', icon: '🌿' },
-  { id: 'dev', name: 'Pers. Entwicklung', icon: '📚' },
-  { id: 'finance', name: 'Business & Finanzen', icon: '💰' },
-  { id: 'mindset', name: 'Mentalität', icon: '🧠' },
-  { id: 'islam', name: 'Islam (Sirat)', icon: '🕋' }
-];
-const LIBRARY_STATUS = ['Aktiv', 'Archiviert', 'Abgeschlossen', 'Blockiert'];
-const LIBRARY_IMPACTS = [10, 8, 5, 3];
-const LIBRARY_SOURCES = ['Youtube', 'Manual', 'Chat', 'Analysis'];
-const LIBRARY_TIME = ['Heute', 'Diese Woche', 'Diesen Monat', 'Älter'];
-
-function BillboardCard({ 
-  item, 
-  onRemove, 
-  onTakeToMission,
-  onAdvance
-}: { 
-  item: BillboardItem; 
-  onRemove: (id: string, type: 'intel' | 'blocker') => void;
-  onTakeToMission: (item: BillboardItem) => void;
-  onAdvance?: (item: BillboardItem) => void;
-}) {
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className={cn(
-        "group relative p-3 rounded-xl border transition-all",
-        item.type === 'intel' 
-          ? "bg-sky-400/5 border-sky-400/20 hover:border-sky-400/40" 
-          : "bg-red-400/5 border-red-400/20 hover:border-red-400/40"
-      )}
-    >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-1.5">
-          <Pin className={cn("w-3 h-3", item.type === 'intel' ? "text-sky-400" : "text-red-400")} />
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-            {item.origin}
-          </span>
-          {item.expiry && (
-            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1">
-              • <Clock className="w-2 h-2" /> {item.expiry}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {item.type === 'intel' && onAdvance && (
-            <button 
-              onClick={() => onAdvance(item)}
-              className="p-1 hover:bg-white/10 rounded text-sky-400 hover:text-sky-300 transition-colors"
-              title="Nächster Schritt (Überschreiben)"
-            >
-              <ArrowUpRight className="w-3 h-3" />
-            </button>
-          )}
-          <button 
-            onClick={() => onTakeToMission(item)}
-            className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-primary transition-colors"
-            title="In Mission übernehmen"
-          >
-            <Target className="w-3 h-3" />
-          </button>
-          <button 
-            onClick={() => onRemove(item.id, item.type)}
-            className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-red-400 transition-colors"
-            title="Entfernen"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
-      <p className={cn(
-        "text-xs leading-relaxed font-medium",
-        item.type === 'intel' ? "text-sky-100" : "text-red-100"
-      )}>
-        {item.text}
-      </p>
-      {item.nextStep && (
-        <div className="mt-2 pt-2 border-t border-sky-400/10">
-          <p className="text-[9px] font-bold text-sky-400/60 uppercase tracking-widest mb-1">Nächster Schritt:</p>
-          <p className="text-[10px] text-sky-300/80 italic leading-snug">
-            {item.nextStep}
-          </p>
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
 interface MapNode extends d3.SimulationNodeDatum {
   id: string;
   item: AnalyzedItem;
@@ -313,18 +207,34 @@ export default function App() {
   }, [activeView]);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<{ id: number; msg: string; type: 'success' | 'warn' | 'info' }[]>([]);
-  
-  const [seedInput, setSeedInput] = useState('');
-  const [chatInput, setChatInput] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isChatting, setIsChatting] = useState(false);
+  const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+
+  const showNotification = (msg: string, type: 'success' | 'warn' | 'info' = 'success') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
+  };
+
+  const {
+    seedInput,
+    setSeedInput,
+    isAnalyzing,
+    setIsAnalyzing,
+    analyzedItems,
+    setAnalyzedItems,
+    isFileLoading,
+    handleAnalyze,
+    handleFileUpload
+  } = useSeeds(showNotification, surrealStatus, setLogs);
+
   const [isInputCollapsed, setIsInputCollapsed] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-  const [isFileLoading, setIsFileLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const chatLogRef = useRef<HTMLDivElement>(null);
   const [isSurrealModalOpen, setIsSurrealModalOpen] = useState(false);
   const [missionInput, setMissionInput] = useState('');
   const [todaysMission, setTodaysMission] = useState<MissionPlan | null>(null);
@@ -335,7 +245,23 @@ export default function App() {
   const [intelInput, setIntelInput] = useState('');
   const [blockerInput, setBlockerInput] = useState('');
   const [selectedSeeds, setSelectedSeeds] = useState<AnalyzedItem[]>([]);
-  const [surrealStatus, setSurrealStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  
+  const {
+    chatInput,
+    setChatInput,
+    isChatting,
+    setIsChatting,
+    handleChatSubmit
+  } = useChat(
+    showNotification,
+    surrealStatus,
+    logs,
+    setLogs,
+    selectedSeeds,
+    missionInput,
+    pinnedIntelItems,
+    pinnedBlockerItems
+  );
   
   const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>(() => {
     const saved = localStorage.getItem('daily_intels');
@@ -1525,8 +1451,6 @@ export default function App() {
     });
   }, [analyzedItems]);
 
-  const chatLogRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (chatLogRef.current) {
       chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
@@ -1545,14 +1469,6 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [memoryConcepts]);
-
-  const showNotification = (msg: string, type: 'success' | 'warn' | 'info' = 'success') => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, msg, type }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 3000);
-  };
 
   // Load local mission on mount
   useEffect(() => {
@@ -1832,116 +1748,6 @@ export default function App() {
     }
   };
 
-  const handleChatSubmit = async (e?: React.FormEvent, isDeep: boolean = false) => {
-    if (e) e.preventDefault();
-    const text = chatInput.trim();
-    if (!text || isChatting) return;
-
-    setIsChatting(true);
-    const userMsgId = Date.now().toString();
-    const userLog = {
-      id: userMsgId,
-      sender: 'User' as const,
-      text,
-      timestamp: Date.now()
-    };
-    setLogs(prev => [...prev, userLog]);
-    if (surrealStatus === 'connected') {
-      surrealService.saveLog(userLog).catch(console.error);
-    }
-    setChatInput('');
-
-    try {
-      const apiKey = getEnv('VITE_GEMINI_API_KEY');
-      const ai = new GoogleGenAI({ apiKey });
-      
-      // Fetch context
-      let contextData = "";
-      
-      if (selectedSeeds.length > 0) {
-        contextData = `
-Hier sind die vom Nutzer SPEZIELL AUSGEWÄHLTEN Seeds für diesen Chat-Kontext:
-${selectedSeeds.map(s => `- [${s.category}] ${s.text} (Score: ${s.score}, Säule: ${s.pillarId}, Vault: ${s.vaultId})`).join('\n')}
-
-Bitte konzentriere dich primär auf diese ausgewählten Informationen.
-`;
-      } else if (surrealStatus === 'connected') {
-        const [seeds, missions] = await Promise.all([
-          surrealService.getSeeds(),
-          surrealService.getMissions()
-        ]);
-        
-        contextData = `
-Hier sind die aktuellen Daten aus deiner SurrealDB Datenbank:
-SEEDS (Gedanken, Ideen, Projekte):
-${seeds.map(s => `- [${s.category}] ${s.text} (Score: ${s.score}, Säule: ${s.pillarId}, Vault: ${s.vaultId})`).join('\n')}
-
-MISSIONEN (Geplante Aufgaben):
-${missions.map(m => `- ${m.text} (Ziel-Datum: ${m.targetDate})`).join('\n')}
-`;
-      } else {
-        contextData = "Hinweis: SurrealDB ist aktuell nicht verbunden. Ich habe nur Zugriff auf die lokalen Daten.";
-      }
-
-      const billboardContext = `
-AKTUELLER BILLBOARD-STATUS (Festgenagelte Relevanz & Prioritäten):
-- AKTIVE MISSION: ${missionInput || 'Keine aktive Mission eingeloggt.'}
-- PINNED INTEL (Wichtige Erkenntnisse/Einschränkungen):
-${(pinnedIntelItems?.length || 0) > 0 ? pinnedIntelItems.map(i => `  * [${i.origin}] ${i.text} (Ablauf: ${i.expiry})${i.nextStep ? ` - NÄCHSTER SCHRITT: ${i.nextStep}` : ''}`).join('\n') : '  Keine Intel gepinnt.'}
-- BLOCKER / WARNUNGEN:
-${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.origin}] ${i.text} (Ablauf: ${i.expiry})`).join('\n') : '  Keine Blocker gepinnt.'}
-`;
-
-      const chatHistory = logs.slice(-10).map(l => `${l.sender === 'User' ? 'Nutzer' : l.sender}: ${l.text}`).join('\n\n');
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Du bist D.T. Kern, der digitale Zwilling und Analyst des Nutzers. 
-        Deine Aufgabe ist es, den Nutzer basierend auf seinen Daten zu beraten.
-        
-        ${billboardContext}
-        
-        KONTEXT AUS DER DATENBANK:
-        ${contextData}
-        
-        GESPRÄCHSVERLAUF (Letzte Nachrichten):
-        ${chatHistory}
-        
-        NUTZER-ANFRAGE:
-        ${text}`,
-        config: {
-          systemInstruction: isDeep 
-            ? "Du bist D.T. Kern. Deine ABSOLUTE PRIORITÄT ist der Billboard-Status. 1. AKTIVE MISSION: Alles was du vorschlägst, muss diese Mission unterstützen oder zumindest nicht behindern. 2. BLOCKER: Wenn der Nutzer etwas verlangt, das einem Blocker auf dem Billboard widerspricht, musst du ihn SOFORT darauf hinweisen und die Anfrage ablehnen oder korrigieren (Reality Check). 3. INTEL: Beachte alle Einschränkungen (Zeit, Ressourcen) und den 'NÄCHSTEN SCHRITT' der gepinnten Intel. Wenn ein Intel einen nächsten Schritt hat, ist dies deine primäre Handlungsempfehlung. Antworte tiefgründig, analytisch und ohne Begrüßung. Nutze die 5 Säulen als Kompass."
-            : "Du bist D.T. Kern. Deine Beratung basiert ZUERST auf dem Billboard (Mission, Intel, Blocker). Wenn ein Pinned Intel existiert, ist dies dein primärer Fokus. Weise direkt auf Blocker hin. Antworte extrem kurz (max 2 Sätze). Sei präzise und direkt.",
-        }
-      });
-
-      const aiText = response.text || "Ich konnte keine Antwort generieren.";
-      
-      const aiLog = {
-        id: (Date.now() + 1).toString(),
-        sender: 'D.T. Kern' as const,
-        text: aiText,
-        timestamp: Date.now()
-      };
-      setLogs(prev => [...prev, aiLog]);
-      if (surrealStatus === 'connected') {
-        surrealService.saveLog(aiLog).catch(console.error);
-      }
-    } catch (err) {
-      console.error('Chat Error:', err);
-      showNotification('Fehler beim Chatten mit D.T. Kern.', 'warn');
-      setLogs(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'System',
-        text: 'Fehler bei der Kommunikation mit der KI.',
-        timestamp: Date.now()
-      }]);
-    } finally {
-      setIsChatting(false);
-    }
-  };
-
   const handleMakeMission = async (item: AnalyzedItem) => {
     const newMission = {
       id: Date.now().toString(),
@@ -2186,340 +1992,6 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
         return [...prev, item];
       }
     });
-  };
-
-  const handleAnalyze = async () => {
-    const text = seedInput.trim();
-    if (!text) {
-      showNotification('Input leer. Bitte Seed eingeben.', 'warn');
-      return;
-    }
-
-    // Check for API Key
-    const apiKey = getEnv('VITE_GEMINI_API_KEY');
-    if (!apiKey) {
-      showNotification('Gemini API Key fehlt. Bitte VITE_GEMINI_API_KEY in den Umgebungsvariablen setzen.', 'warn');
-      setLogs(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: 'System',
-        text: 'FEHLER: Kein API Key gefunden. Wenn du auf Zeabur hostest, stelle sicher, dass die Variable VITE_GEMINI_API_KEY (mit VITE_ Präfix) gesetzt ist und die App danach neu gebaut wurde.',
-        timestamp: Date.now()
-      }]);
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setLogs(prev => [...prev, {
-      id: Date.now().toString(),
-      sender: 'User',
-      text,
-      timestamp: Date.now()
-    }]);
-    setSeedInput('');
-
-    let contentToAnalyze = text;
-    let isYoutube = false;
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/;
-    const match = text.match(youtubeRegex);
-
-    if (match) {
-      isYoutube = true;
-      setLogs(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'System',
-        text: 'YouTube-Link erkannt. Starte Deep-Scan (Transkript-Abruf)...',
-        timestamp: Date.now()
-      }]);
-
-      try {
-        const transcriptResponse = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(text)}`);
-        if (transcriptResponse.ok) {
-          const data = await transcriptResponse.json();
-          contentToAnalyze = `YouTube Video Transkript: ${data.transcript}`;
-          setLogs(prev => [...prev, {
-            id: (Date.now() + 2).toString(),
-            sender: 'System',
-            text: `Transkript erfolgreich abgerufen (${data.parts} Segmente). Starte KI-Analyse...`,
-            timestamp: Date.now()
-          }]);
-        } else {
-          console.warn('Failed to fetch transcript, falling back to URL analysis');
-          setLogs(prev => [...prev, {
-            id: (Date.now() + 2).toString(),
-            sender: 'System',
-            text: 'Transkript-Abruf fehlgeschlagen (Video hat evtl. keine Untertitel). Analysiere nur den Link...',
-            timestamp: Date.now()
-          }]);
-        }
-      } catch (err) {
-        console.error('Transcript fetch error:', err);
-      }
-    }
-
-    try {
-      const apiKey = getEnv('VITE_GEMINI_API_KEY');
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Analysiere diesen "Seed" (Gedanke, Idee, Projekt, Kundenanfrage, oder ein Video-Transkript) und kategorisiere ihn.
-        
-        ${isYoutube ? "Dies ist ein Transkript eines YouTube-Videos. Extrahiere die wichtigsten Erkenntnisse und erstelle eine prägnante Zusammenfassung (max 2 Sätze) für das Feld 'text'. Wenn der Titel des Videos im Transkript erkennbar ist, nutze ihn als Präfix." : ""}
-        
-        Seed: "${contentToAnalyze}"
-        
-        Säulen (pillarId):
-        - health (Gesundheit)
-        - dev (Pers. Entwicklung)
-        - finance (Business & Finanzen)
-        - mindset (Mentalität)
-        - islam (Islam/Sirat)
-        
-        Vaults (vaultId):
-        - ideen: Neue Konzepte, Geistesblitze.
-        - projekte: Konkrete Vorhaben, komplexe Aufgaben.
-        - kunden: Kundenanfragen (Websites, Apps, AI Agents, Automatisierungen, Business-Deals).
-        - ziele: Langfristige Missionen.
-        - workflows: Strategien, Prozesse.
-        - academy: Weiterbildungen, Kurse, Abonnements, Logins, Credentials, Kosten für Bildung.
-        - erkenntnisse: Gelerntes, Aha-Momente.
-        - toolbox: Werkzeuge, Links.
-        
-        Impact-Score (1.0 bis 10.0):
-        - 8-10: GAME CHANGER (Hoher Hebel)
-        - 4-7: SOLID WORK (Wichtig, aber inkrementell)
-        - 1-3: NOISE (Ablenkung, geringer Wert)
-        
-        Zusätzlich:
-        - reasoning: Warum ist dieser Seed ein Game Changer oder Solid Work? (1 Satz)
-        - nextStep: Was ist der nächste konkrete Schritt? (1 Satz)
-        - status: Standardmäßig "Offen".
-        - duration: Geschätzter Zeitbedarf (z.B. "15 Min", "45 Min", "2h").
-        - blockedBy: Was blockiert diesen Seed aktuell? (Falls nichts, "Keine").
-        - missionType: Einer der folgenden Typen: "Bauen", "Denken", "Planen", "Entscheiden", "Dokumentieren".
-        - consequence: Was passiert, wenn man diesen Seed ignoriert? (1 kurzer Satz).
-        
-        Gib das Ergebnis als JSON zurück.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              text: { type: Type.STRING },
-              score: { type: Type.NUMBER },
-              pillarId: { type: Type.STRING },
-              vaultId: { type: Type.STRING },
-              category: { 
-                type: Type.STRING, 
-                enum: ["GAME CHANGER", "SOLID WORK", "NOISE"],
-                description: "Die Kategorie basierend auf dem Score (8-10: GAME CHANGER, 4-7: SOLID WORK, 1-3: NOISE)"
-              },
-              reasoning: { type: Type.STRING },
-              nextStep: { type: Type.STRING },
-              status: { type: Type.STRING, enum: ["Offen", "In Arbeit", "Blockiert"] },
-              duration: { type: Type.STRING },
-              blockedBy: { type: Type.STRING },
-              missionType: { type: Type.STRING, enum: ["Bauen", "Denken", "Planen", "Entscheiden", "Dokumentieren"] },
-              consequence: { type: Type.STRING }
-            },
-            required: ["text", "score", "pillarId", "vaultId", "category", "reasoning", "nextStep", "status", "duration", "blockedBy", "missionType", "consequence"]
-          }
-        }
-      });
-
-      if (!response.text) {
-        throw new Error('Die KI hat keine Text-Antwort geliefert. Möglicherweise wurde die Anfrage durch Sicherheitsfilter blockiert oder der API-Key ist ungültig.');
-      }
-
-      let result;
-      try {
-        result = JSON.parse(response.text);
-      } catch (e) {
-        console.error('Failed to parse AI response:', e);
-        throw new Error('Die KI hat kein gültiges JSON geliefert.');
-      }
-      
-      if (!result) {
-        throw new Error('Die KI hat ein leeres Ergebnis geliefert.');
-      }
-      
-      // Fallback logic for category based on score if AI returns something else
-      let finalCategory: 'GAME CHANGER' | 'SOLID WORK' | 'NOISE' = result.category as any;
-      const score = result.score || 5;
-      
-      if (!['GAME CHANGER', 'SOLID WORK', 'NOISE'].includes(finalCategory)) {
-        if (score >= 8) finalCategory = 'GAME CHANGER';
-        else if (score >= 4) finalCategory = 'SOLID WORK';
-        else finalCategory = 'NOISE';
-      }
-
-      const newItem: AnalyzedItem = {
-        id: Date.now().toString(),
-        text: result.text || text,
-        score: score,
-        pillarId: result.pillarId || 'dev',
-        vaultId: result.vaultId as any || 'ideen',
-        category: finalCategory,
-        reasoning: result.reasoning || '',
-        nextStep: result.nextStep || '',
-        status: result.status as any || 'Offen',
-        duration: result.duration || 'Unbekannt',
-        blockedBy: result.blockedBy || 'Keine',
-        missionType: result.missionType as any || 'Bauen',
-        consequence: result.consequence || '',
-        timestamp: Date.now(),
-        sourceUrl: isYoutube ? text : undefined
-      };
-
-      setAnalyzedItems(prev => [newItem, ...prev]);
-      
-      if (surrealStatus === 'connected') {
-        await surrealService.saveSeed(newItem);
-      }
-
-      showNotification('Seed analysiert und gesichert.', 'success');
-      
-      setLogs(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'D.T. Kern',
-        text: `Analyse abgeschlossen: [${newItem.vaultId.toUpperCase()}] ${newItem.text} (Score: ${newItem.score.toFixed(1)}). Zugeordnet zu: ${pillars.find(p => p.id === newItem.pillarId)?.name || 'Unbekannt'}.`,
-        timestamp: Date.now()
-      }]);
-
-    } catch (err) {
-      console.error('Analysis Error:', err);
-      showNotification('Fehler bei der KI-Analyse.', 'warn');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('text/') && !file.name.endsWith('.log') && !file.name.endsWith('.txt')) {
-      showNotification('Bitte nur Textdateien (.txt, .log) hochladen.', 'warn');
-      return;
-    }
-
-    setIsFileLoading(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const content = e.target?.result as string;
-      if (!content) {
-        setIsFileLoading(false);
-        return;
-      }
-
-      // Check for API Key
-      const apiKey = getEnv('VITE_GEMINI_API_KEY');
-      if (!apiKey) {
-        showNotification('Gemini API Key fehlt.', 'warn');
-        setLogs(prev => [...prev, {
-          id: Date.now().toString(),
-          sender: 'System',
-          text: 'FEHLER: Datei-Analyse nicht möglich, da kein API Key gefunden wurde (VITE_GEMINI_API_KEY erforderlich).',
-          timestamp: Date.now()
-        }]);
-        setIsFileLoading(false);
-        return;
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-
-      setLogs(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: 'System',
-        text: `Datei "${file.name}" empfangen (${content.length} Zeichen). Starte Deep-Analysis...`,
-        timestamp: Date.now()
-      }]);
-
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Analysiere diesen Text und extrahiere die sinnvollsten, handlungsrelevanten Informationen. 
-          Erstelle eine Liste von "Seeds". Jedes Element muss folgendes enthalten:
-          - text: Eine kurze, prägnante Zusammenfassung der Info.
-          - score: Ein Impact-Score von 1.0 bis 10.0.
-          - pillarId: Eine der IDs: health, dev, finance, mindset, islam.
-          - vaultId: Eine der IDs: ideen, projekte, kunden, ziele, workflows, academy, erkenntnisse, toolbox.
-          - category: Entweder "GAME CHANGER" (Score 8-10), "SOLID WORK" (4-7) oder "NOISE" (1-3).
-          
-          Vault-Logik (WICHTIG):
-          - ideen: Neue Konzepte, Geistesblitze, kreative Ansätze.
-          - projekte: Konkrete Vorhaben, komplexe Aufgabenpakete, laufende Projekte.
-          - kunden: Kundenanfragen, Business-Deals, Website/App/AI-Agent Anfragen, Automatisierungs-Wünsche.
-          - ziele: Langfristige Missionen, Meilensteine, Visionen.
-          - workflows: Strategien, Prozesse, n8n-Logik, Schritt-für-Schritt Anleitungen.
-          - academy: Weiterbildungen, Kurse, Abonnements, Logins, Credentials, Kosten für Bildung.
-          - erkenntnisse: Gelerntes, Aha-Momente, tiefere Einsichten, Weisheiten.
-          - toolbox: Werkzeuge, Links, Ressourcen, Snippets.
-          
-          Text zum Analysieren:
-          ${content.substring(0, 30000)}`, // Cap to avoid token limits
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  text: { type: Type.STRING },
-                  score: { type: Type.NUMBER },
-                  pillarId: { type: Type.STRING },
-                  vaultId: { type: Type.STRING },
-                  category: { type: Type.STRING }
-                },
-                required: ["text", "score", "pillarId", "vaultId", "category"]
-              }
-            }
-          }
-        });
-
-        const responseText = response.text || "[]";
-        let results: AnalyzedItem[] = [];
-        try {
-          results = JSON.parse(responseText) as AnalyzedItem[];
-        } catch (e) {
-          console.error('Failed to parse deep analysis results:', e);
-        }
-        
-        if (Array.isArray(results) && results.length > 0) {
-          const itemsWithIds = results.map(item => ({
-            ...item,
-            id: Math.random().toString(36).substr(2, 9),
-            timestamp: Date.now()
-          }));
-
-          setAnalyzedItems(prev => [...itemsWithIds, ...prev]);
-
-          // Save to SurrealDB if connected
-          if (surrealStatus === 'connected') {
-            Promise.all(itemsWithIds.map(item => surrealService.saveSeed(item))).catch(err => {
-              console.error('SurrealDB Batch Save Error:', err);
-              showNotification('Fehler beim Batch-Speichern in SurrealDB.', 'warn');
-            });
-          }
-          
-          setLogs(prev => [...prev, {
-            id: Date.now().toString(),
-            sender: 'D.T. Kern',
-            text: `Deep-Analysis abgeschlossen. ${results.length} relevante Informationen extrahiert und kategorisiert.`,
-            timestamp: Date.now()
-          }]);
-          showNotification(`${results.length} Erkenntnisse extrahiert.`, 'success');
-        } else {
-          showNotification('Keine relevanten Informationen gefunden.', 'info');
-        }
-      } catch (error) {
-        console.error('Gemini Error:', error);
-        showNotification('Fehler bei der KI-Analyse.', 'warn');
-      } finally {
-        setIsFileLoading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
   };
 
   const handleExportCSV = () => {
@@ -2772,629 +2244,42 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
           )}
 
         {activeView === 'vault' && (
-          <motion.div 
-              key="vault"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.3 }}
-              className="flex-1 flex flex-col overflow-hidden h-full bg-slate-950/40 backdrop-blur-md rounded-3xl border border-white/5"
-            >
-              {/* Library Header */}
-              <div className="px-8 py-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-900/20">
-                <div>
-                  <h2 className="text-3xl font-black tracking-tighter text-white flex items-center gap-3">
-                    <Database className="w-8 h-8 text-primary" /> 
-                    KNOWLEDGE LIBRARY
-                  </h2>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1.5 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    Zentraler Wissensraum & Strategisches Archiv
-                  </p>
-                  <div className="flex items-center bg-white/[0.03] rounded-xl p-1 border border-white/5 ml-6">
-                    <button 
-                      onClick={() => setLibraryTab('all')}
-                      className={cn(
-                        "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        libraryTab === 'all' ? "bg-primary text-slate-900" : "text-slate-500 hover:text-slate-300"
-                      )}
-                    >
-                      Library
-                    </button>
-                    <button 
-                      onClick={() => setLibraryTab('intel')}
-                      className={cn(
-                        "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
-                        libraryTab === 'intel' ? "bg-amber-500 text-slate-900" : "text-slate-500 hover:text-slate-300"
-                      )}
-                    >
-                      <Youtube className="w-3 h-3" />
-                      Daily Intel
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <div className="relative group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
-                    <input 
-                      type="text"
-                      placeholder="Wissen durchsuchen..."
-                      value={librarySearch}
-                      onChange={(e) => setLibrarySearch(e.target.value)}
-                      className="bg-slate-900/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 w-64 transition-all"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setLibrarySearch('');
-                      setLibraryType(null);
-                      setLibraryArea(null);
-                      setLibraryStatus(null);
-                      setLibraryImpact(null);
-                      setSelectedFilterId(null);
-                    }}
-                    className="p-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-all"
-                    title="Filter zurücksetzen"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Library Grid Layout */}
-              <div className="flex-1 flex overflow-hidden">
-                {libraryTab === 'all' ? (
-                  <>
-                    {/* 1. LEFT COLUMN: FILTERS */}
-                <aside className="hidden lg:flex w-72 border-r border-white/5 flex-col bg-slate-900/10">
-                  <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
-                    
-                    {/* Filter: Typ */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Layout className="w-3 h-3" /> TYP
-                      </h4>
-                      <div className="space-y-1">
-                        {LIBRARY_TYPES.map(type => (
-                          <button
-                            key={type}
-                            onClick={() => setLibraryType(libraryType === type ? null : type)}
-                            className={cn(
-                              "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group",
-                              libraryType === type ? "bg-primary/20 text-primary border border-primary/20" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"
-                            )}
-                          >
-                            {type}
-                            <ChevronRight className={cn("w-3 h-3 opacity-0 group-hover:opacity-100 transition-all", libraryType === type && "opacity-100")} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Filter: Bereich */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Target className="w-3 h-3" /> BEREICH
-                      </h4>
-                      <div className="space-y-1">
-                        {LIBRARY_AREAS.map(area => (
-                          <button
-                            key={area.id}
-                            onClick={() => setLibraryArea(libraryArea === area.id ? null : area.id)}
-                            className={cn(
-                              "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group",
-                              libraryArea === area.id ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/20" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"
-                            )}
-                          >
-                            <span className="text-base">{area.icon}</span>
-                            <span className="flex-1">{area.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Filter: Status */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Activity className="w-3 h-3" /> STATUS
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {LIBRARY_STATUS.map(status => (
-                          <button
-                            key={status}
-                            onClick={() => setLibraryStatus(libraryStatus === status ? null : status)}
-                            className={cn(
-                              "px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all",
-                              libraryStatus === status ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
-                            )}
-                          >
-                            {status}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Filter: Impact */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Zap className="w-3 h-3" /> MIN. IMPACT
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {LIBRARY_IMPACTS.map(impact => (
-                          <button
-                            key={impact}
-                            onClick={() => setLibraryImpact(libraryImpact === impact ? null : impact)}
-                            className={cn(
-                              "px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2",
-                              libraryImpact === impact ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
-                            )}
-                          >
-                            <Sparkles className="w-3 h-3" /> {impact}+
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Filter: Vaults (Bestehende Integration) */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Database className="w-3 h-3" /> VAULTS
-                      </h4>
-                      <div className="space-y-1">
-                        {VAULTS.map(v => (
-                          <button
-                            key={v.id}
-                            onClick={() => setSelectedFilterId(selectedFilterId === v.id ? null : v.id)}
-                            className={cn(
-                              "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group",
-                              selectedFilterId === v.id ? "bg-white/10 text-white border border-white/20" : "text-slate-500 hover:bg-white/5 hover:text-slate-300 border border-transparent"
-                            )}
-                          >
-                            <span>{v.icon}</span>
-                            <span className="flex-1">{v.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </aside>
-
-                {/* 2. MIDDLE COLUMN: SMART LIST */}
-                <main className="flex-1 flex flex-col overflow-hidden bg-slate-950/20">
-                  <div className="flex-1 overflow-y-auto p-8 space-y-12 scrollbar-hide">
-                    
-                    {/* KNOWLEDGE PRESSURE PANEL */}
-                    {knowledgePressure && (
-                      <section className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2">
-                            <Zap className="w-3 h-3 text-primary" /> Knowledge Pressure Panel
-                          </h3>
-                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">
-                            Strategischer Lagebericht • {new Date().toLocaleDateString('de-DE')}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {/* 1. Recurring Themes */}
-                          <div className="p-5 rounded-2xl bg-slate-900/40 border border-white/5 hover:border-primary/20 transition-all group">
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Layers className="w-3 h-3 text-indigo-400" /> Themen-Druck
-                              </h4>
-                              <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[8px] font-bold">AKTIV</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {knowledgePressure.themes.length > 0 ? (
-                                knowledgePressure.themes.map(theme => (
-                                  <button 
-                                    key={theme.name}
-                                    onClick={() => setLibrarySearch(theme.name)}
-                                    className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold text-slate-300 hover:bg-primary/20 hover:text-primary hover:border-primary/20 transition-all"
-                                  >
-                                    {theme.name} <span className="text-slate-500 ml-1">{theme.count}</span>
-                                  </button>
-                                ))
-                              ) : (
-                                <p className="text-[10px] text-slate-600 italic">Keine klaren Muster gefunden</p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 2. Forgotten Strong Seeds */}
-                          <div className={cn(
-                            "p-5 rounded-2xl border transition-all group",
-                            knowledgePressure.forgotten.length > 0 ? "bg-amber-500/5 border-amber-500/20" : "bg-slate-900/40 border-white/5"
-                          )}>
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Sparkles className="w-3 h-3 text-amber-400" /> Brachliegendes Potenzial
-                              </h4>
-                              {knowledgePressure.forgotten.length > 0 && (
-                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[8px] font-bold animate-pulse">DRUCK</span>
-                              )}
-                            </div>
-                            {knowledgePressure.forgotten.length > 0 ? (
-                              <div className="space-y-3">
-                                <p className="text-[10px] text-slate-300 font-medium line-clamp-2">
-                                  {knowledgePressure.forgotten[0].text}
-                                </p>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[9px] font-bold text-amber-400/60 uppercase">
-                                    Seit {Math.floor((Date.now() - knowledgePressure.forgotten[0].timestamp) / (24 * 60 * 60 * 1000))} Tagen still
-                                  </span>
-                                  <button 
-                                    onClick={() => setSelectedLibraryItem(knowledgePressure.forgotten[0])}
-                                    className="text-[9px] font-black text-white uppercase tracking-widest hover:text-primary transition-colors"
-                                  >
-                                    Prüfen
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-600 italic">Alle starken Seeds sind aktuell</p>
-                            )}
-                          </div>
-
-                          {/* 3. Projects without Next Step */}
-                          <div className={cn(
-                            "p-5 rounded-2xl border transition-all group",
-                            knowledgePressure.gapProjects.length > 0 ? "bg-red-500/5 border-red-500/20" : "bg-slate-900/40 border-white/5"
-                          )}>
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Target className="w-3 h-3 text-red-400" /> Strategische Lücken
-                              </h4>
-                              {knowledgePressure.gapProjects.length > 0 && (
-                                <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[8px] font-bold">KRITISCH</span>
-                              )}
-                            </div>
-                            {knowledgePressure.gapProjects.length > 0 ? (
-                              <div className="space-y-3">
-                                <p className="text-[10px] text-slate-300 font-medium">
-                                  {knowledgePressure.gapProjects.length} Projekte ohne nächsten Schritt
-                                </p>
-                                <button 
-                                  onClick={() => {
-                                    setLibraryType('Projekt');
-                                    setLibraryStatus('Offen');
-                                  }}
-                                  className="w-full py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[9px] font-black text-red-400 uppercase tracking-widest hover:bg-red-500/20 transition-all"
-                                >
-                                  Lücken schließen
-                                </button>
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-600 italic">Alle Projekte haben klare Ziele</p>
-                            )}
-                          </div>
-
-                          {/* 4. Insights without Application */}
-                          <div className="p-5 rounded-2xl bg-slate-900/40 border border-white/5 hover:border-emerald-500/20 transition-all group">
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Lightbulb className="w-3 h-3 text-emerald-400" /> Unausgeschöpfte Erkenntnisse
-                              </h4>
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[8px] font-bold">
-                                {knowledgePressure.unusedInsights.length} OFFEN
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-slate-400 leading-relaxed mb-4">
-                              Erkenntnisse ohne Zuordnung zu Missionen oder Projekten.
-                            </p>
-                            <button 
-                              onClick={() => setLibraryType('Erkenntnis')}
-                              className="text-[9px] font-black text-emerald-400 uppercase tracking-widest hover:text-emerald-300 transition-colors flex items-center gap-2"
-                            >
-                              Anwendung finden <ChevronRight className="w-3 h-3" />
-                            </button>
-                          </div>
-
-                          {/* 5. Similar Seeds */}
-                          <div className={cn(
-                            "p-5 rounded-2xl border transition-all group",
-                            knowledgePressure.similarCount > 0 ? "bg-indigo-500/5 border-indigo-500/20" : "bg-slate-900/40 border-white/5"
-                          )}>
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Link className="w-3 h-3 text-indigo-400" /> Redundanz-Check
-                              </h4>
-                            </div>
-                            {knowledgePressure.similarCount > 0 ? (
-                              <div className="space-y-3">
-                                <p className="text-[10px] text-slate-300 font-medium">
-                                  {knowledgePressure.similarCount} thematisch ähnliche Seeds gefunden
-                                </p>
-                                <button 
-                                  className="w-full py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black text-indigo-400 uppercase tracking-widest hover:bg-indigo-500/20 transition-all"
-                                >
-                                  Zusammenführen
-                                </button>
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-600 italic">Keine Redundanzen erkannt</p>
-                            )}
-                          </div>
-
-                          {/* 6. Chaos Clusters */}
-                          <div className={cn(
-                            "p-5 rounded-2xl border transition-all group",
-                            knowledgePressure.chaosArea ? "bg-primary/5 border-primary/20" : "bg-slate-900/40 border-white/5"
-                          )}>
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Layout className="w-3 h-3 text-primary" /> Chaos-Haufen
-                              </h4>
-                            </div>
-                            {knowledgePressure.chaosArea ? (
-                              <div className="space-y-3">
-                                <p className="text-[10px] text-slate-300 font-medium">
-                                  Hohe Dichte im Bereich <span className="text-primary">{knowledgePressure.chaosArea.name}</span>
-                                </p>
-                                <p className="text-[9px] text-slate-500 leading-relaxed">
-                                  Viele Einträge, aber schwache Struktur. Potenzial für Clustern.
-                                </p>
-                                <button 
-                                  onClick={() => setLibraryArea(knowledgePressure.chaosArea!.id)}
-                                  className="text-[9px] font-black text-primary uppercase tracking-widest hover:text-white transition-colors"
-                                >
-                                  Strukturieren
-                                </button>
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-600 italic">Wissensstruktur ist stabil</p>
-                            )}
-                          </div>
-                        </div>
-                      </section>
-                    )}
-
-                    {librarySections.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-12">
-                        <div className="w-20 h-20 bg-slate-900/50 rounded-3xl flex items-center justify-center mb-6 border border-white/5 shadow-2xl">
-                          <Search className="w-10 h-10 text-slate-700" />
-                        </div>
-                        <h3 className="text-xl font-black text-white tracking-tight">Keine Treffer in der Library</h3>
-                        <p className="text-sm text-slate-500 max-w-xs mt-3 leading-relaxed">
-                          Passe deine Filter an oder suche nach anderen Begriffen, um verborgenes Wissen zu finden.
-                        </p>
-                        <button 
-                          onClick={() => {
-                            setLibrarySearch('');
-                            setLibraryType(null);
-                            setLibraryArea(null);
-                            setLibraryStatus(null);
-                            setLibraryImpact(null);
-                            setSelectedFilterId(null);
-                          }}
-                          className="mt-8 px-6 py-2.5 bg-primary text-slate-900 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20"
-                        >
-                          Alle Filter zurücksetzen
-                        </button>
-                      </div>
-                    ) : (
-                      librarySections.map(section => (
-                        <section key={section.title} className="space-y-6">
-                          <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                            <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] flex items-center gap-3">
-                              <span className="p-1.5 bg-white/5 rounded-lg">{section.icon}</span>
-                              {section.title}
-                              <span className="text-[10px] text-slate-500 font-mono ml-2 px-2 py-0.5 bg-white/5 rounded-full">
-                                {section.items.length}
-                              </span>
-                            </h3>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                            <AnimatePresence mode="popLayout">
-                              {section.items.map(item => {
-                                const pillar = pillars.find(p => p.id === item.pillarId) || INITIAL_PILLARS[0];
-                                const isSelected = selectedLibraryItem?.id === item.id;
-                                return (
-                                  <motion.div
-                                    key={item.id}
-                                    layout
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    onClick={() => setSelectedLibraryItem(item)}
-                                    className={cn(
-                                      "p-5 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden",
-                                      isSelected 
-                                        ? "bg-primary/10 border-primary/40 shadow-lg shadow-primary/5" 
-                                        : "bg-slate-900/40 border-white/5 hover:border-white/20 hover:bg-slate-900/60"
-                                    )}
-                                  >
-                                    <div className="flex justify-between items-start mb-4">
-                                      <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-lg">{pillar.icon}</span>
-                                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                                            {pillar.name}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className={cn(
-                                            "px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-tighter",
-                                            item.category === 'GAME CHANGER' ? "bg-primary text-slate-900" : "bg-white/10 text-slate-400"
-                                          )}>
-                                            {item.category}
-                                          </span>
-                                          <span className="text-[8px] font-mono text-slate-600">
-                                            {new Date(item.timestamp).toLocaleDateString('de-DE')}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      <div className="text-xl font-black font-mono text-primary/40 group-hover:text-primary transition-colors">
-                                        {item.score.toFixed(1)}
-                                      </div>
-                                    </div>
-                                    
-                                    <h4 className="text-sm font-bold text-white leading-snug mb-3 line-clamp-2 group-hover:text-primary transition-colors">
-                                      {item.text}
-                                    </h4>
-                                    
-                                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
-                                      <div className="flex items-center gap-3">
-                                        {item.status && (
-                                          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase">
-                                            <div className={cn(
-                                              "w-1.5 h-1.5 rounded-full",
-                                              item.status === 'In Arbeit' ? "bg-primary animate-pulse" : 
-                                              item.status === 'Blockiert' ? "bg-red-500" : "bg-slate-600"
-                                            )} />
-                                            {item.status}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <ChevronRight className={cn(
-                                        "w-4 h-4 text-slate-700 transition-all",
-                                        isSelected ? "text-primary translate-x-1" : "group-hover:text-slate-400 group-hover:translate-x-1"
-                                      )} />
-                                    </div>
-                                  </motion.div>
-                                );
-                              })}
-                            </AnimatePresence>
-                          </div>
-                        </section>
-                      ))
-                    )}
-                  </div>
-                </main>
-
-                {/* 3. RIGHT COLUMN: DETAIL VIEW */}
-                <aside className="w-96 border-l border-white/5 bg-slate-900/10 flex flex-col overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    {selectedLibraryItem ? (
-                      <motion.div 
-                        key={selectedLibraryItem.id}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        className="flex-1 flex flex-col overflow-y-auto p-8 scrollbar-hide"
-                      >
-                        <div className="mb-8">
-                          <div className="flex items-center justify-between mb-6">
-                            <button 
-                              onClick={() => setSelectedLibraryItem(null)}
-                              className="p-2 rounded-xl hover:bg-white/5 text-slate-500 transition-all"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                            <div className="flex items-center gap-2">
-                              <button 
-                                onClick={() => handleRestoreFromVault(selectedLibraryItem)}
-                                className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-primary hover:border-primary/30 transition-all"
-                                title="Wiederherstellen"
-                              >
-                                <RefreshCw className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteSeed(selectedLibraryItem)}
-                                className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-red-400 hover:border-red-400/30 transition-all"
-                                title="Löschen"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="space-y-6">
-                            <div>
-                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Original-Input</h4>
-                              <div className="p-5 rounded-2xl bg-slate-900/50 border border-white/5 text-sm leading-relaxed text-white font-medium">
-                                {selectedLibraryItem.text}
-                              </div>
-                            </div>
-
-                            {selectedLibraryItem.reasoning && (
-                              <div>
-                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Strategische Analyse</h4>
-                                <div className="p-5 rounded-2xl bg-primary/5 border border-primary/10 text-xs leading-relaxed text-slate-300 italic">
-                                  {selectedLibraryItem.reasoning}
-                                </div>
-                              </div>
-                            )}
-
-                            {selectedLibraryItem.nextStep && (
-                              <div>
-                                <h4 className="text-[10px] font-black text-emerald-500/60 uppercase tracking-widest mb-3">Nächster Schritt</h4>
-                                <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 text-xs font-bold text-emerald-400 flex items-center gap-3">
-                                  <ArrowRight className="w-4 h-4 shrink-0" />
-                                  {selectedLibraryItem.nextStep}
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4 pt-4">
-                              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-center">
-                                <span className="block text-[9px] font-black text-slate-500 uppercase mb-1">Impact</span>
-                                <span className="text-xl font-black text-primary font-mono">{selectedLibraryItem.score.toFixed(1)}</span>
-                              </div>
-                              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-center">
-                                <span className="block text-[9px] font-black text-slate-500 uppercase mb-1">Status</span>
-                                <span className="text-[10px] font-black text-white uppercase">{selectedLibraryItem.status || 'Archiviert'}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-auto space-y-3 pt-8 border-t border-white/5">
-                          <button 
-                            onClick={() => handleTakeToMission(selectedLibraryItem)}
-                            className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:scale-[1.02] transition-all shadow-xl shadow-primary/10"
-                          >
-                            <Rocket className="w-4 h-4" />
-                            In Mission ziehen
-                          </button>
-                          <button 
-                            onClick={() => handlePinItem(selectedLibraryItem.text, 'intel', 'Analyse', 'dauerhaft', selectedLibraryItem.nextStep)}
-                            className="w-full py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-white/10 transition-all"
-                          >
-                            <Pin className="w-4 h-4" />
-                            Ans Billboard pinnen
-                          </button>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-12 opacity-40">
-                        <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mb-6 border border-white/5">
-                          <FileText className="w-8 h-8 text-slate-700" />
-                        </div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-                          Wähle einen Eintrag aus,<br />um Details zu sehen
-                        </p>
-                      </div>
-                    )}
-                  </AnimatePresence>
-                </aside>
-                  </>
-                ) : (
-                  <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
-                    <div className="max-w-4xl mx-auto">
-                      <div className="mb-8">
-                        <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
-                          <Sparkles className="w-6 h-6 text-amber-400" />
-                          DAILY INTEL
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">
-                          Morgendlicher Strategie-Feed deiner YouTube-Quellen
-                        </p>
-                      </div>
-                      <IntelFeed 
-                        items={dailyIntels} 
-                        onDelete={handleDeleteIntel}
-                        onUpdateStatus={handleUpdateIntelStatus}
-                        onAddDemo={handleLoadDemoIntel}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
+          <VaultView 
+            libraryTab={libraryTab}
+            setLibraryTab={setLibraryTab}
+            dailyIntels={dailyIntels}
+            setDailyIntels={setDailyIntels}
+            handleDeleteIntel={handleDeleteIntel}
+            analyzedItems={analyzedItems}
+            setAnalyzedItems={setAnalyzedItems}
+            librarySearch={librarySearch}
+            setLibrarySearch={setLibrarySearch}
+            libraryType={libraryType}
+            setLibraryType={setLibraryType}
+            libraryArea={libraryArea}
+            setLibraryArea={setLibraryArea}
+            libraryStatus={libraryStatus}
+            setLibraryStatus={setLibraryStatus}
+            libraryImpact={libraryImpact}
+            setLibraryImpact={setLibraryImpact}
+            selectedFilterId={selectedFilterId}
+            setSelectedFilterId={setSelectedFilterId}
+            filteredLibraryItems={filteredItems}
+            selectedLibraryItem={selectedLibraryItem}
+            setSelectedLibraryItem={setSelectedLibraryItem}
+            handleDelete={handleDeleteSeed}
+            handlePinItem={handlePinItem}
+            handleTakeToMission={handleTakeToMission}
+            handleMakeMission={handleMakeMission}
+            handleMoveToVault={handleMoveToVault}
+            handleRestoreFromVault={handleRestoreFromVault}
+            handleUpdateVault={handleUpdateVault}
+            toggleSeedSelection={toggleSeedSelection}
+            selectedSeeds={selectedSeeds}
+            showNotification={showNotification}
+            knowledgePressure={knowledgePressure}
+          />
+        )}
 
           {activeView === 'video' && (
             <motion.div 
