@@ -15,30 +15,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-
-export interface DailyIntel {
-  id: string;
-  url: string; // Primary URL
-  additional_urls?: string[]; // For combined intel
-  title: string;
-  analyst_report: {
-    core_points: string[];
-    relevance_score: number;
-    goal_alignment: string;
-  };
-  supreme_decision: 'discard' | 'archive' | 'build';
-  builder_plan?: {
-    steps: string[];
-    tech_stack_notes: string;
-  };
-  navigator_infographic: {
-    headline: string;
-    visual_summary: string[];
-    punchline: string;
-  };
-  chronicle_log: string[];
-  timestamp: number;
-}
+import { DailyIntel } from '../types';
 
 interface IntelFeedProps {
   items: DailyIntel[];

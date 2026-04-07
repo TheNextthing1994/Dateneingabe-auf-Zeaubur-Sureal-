@@ -28,11 +28,11 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { AnalyzedItem, Pillar, BillboardItem } from '../types';
+import { AnalyzedItem, Pillar, BillboardItem, DailyIntel } from '../types';
 import { LIBRARY_TYPES, LIBRARY_AREAS, LIBRARY_STATUS, LIBRARY_IMPACTS, VAULTS, INITIAL_PILLARS } from '../constants';
 import { BoardCard } from './BoardCard';
 
-import { IntelFeed, DailyIntel } from './IntelFeed';
+import { IntelFeed } from './IntelFeed';
 
 interface VaultViewProps {
   libraryTab: 'all' | 'intel';

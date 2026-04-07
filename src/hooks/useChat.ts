@@ -132,11 +132,64 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
     }
   }, [chatInput, isChatting, logs, missionInput, pinnedBlockerItems, pinnedIntelItems, selectedSeeds, setLogs, showNotification, surrealStatus]);
 
+  const handleSuggestNextTask = useCallback(async (analyzedItems: AnalyzedItem[]) => {
+    if (isChatting) return;
+    
+    const topGameChanger = analyzedItems
+      .filter(item => item.category === 'GAME CHANGER')
+      .sort((a, b) => b.score - a.score)[0];
+      
+    const mission = missionInput || 'Keine aktive Mission eingeloggt.';
+    
+    setIsChatting(true);
+    
+    try {
+      const apiKey = getEnv('VITE_GEMINI_API_KEY');
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `
+        Du bist D.T. Kern (Strategie-Modus). 
+        Basierend auf der aktuellen Aktiven Mission und dem wichtigsten Game Changer, schlage den EINEN nächsten, höchst-impactvollen Schritt vor.
+        
+        AKTIVE MISSION: ${mission}
+        TOP GAME CHANGER: ${topGameChanger ? `[${topGameChanger.vaultId.toUpperCase()}] ${topGameChanger.text} (Score: ${topGameChanger.score})` : 'Kein Game Changer vorhanden.'}
+        
+        BILLBOARD-KONTEXT:
+        - INTEL: ${pinnedIntelItems.map(i => i.text).join(', ') || 'Keine'}
+        - BLOCKER: ${pinnedBlockerItems.map(i => i.text).join(', ') || 'Keine'}
+        
+        Antworte extrem kurz, direkt und handlungsorientiert (max. 2 Sätze).
+      `;
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      
+      const aiText = response.text || "Ich konnte keinen nächsten Schritt identifizieren.";
+      
+      setLogs(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: 'D.T. Kern (Strategie)',
+        text: `🎯 STRATEGIE-VORSCHLAG:\n\n${aiText}`,
+        timestamp: Date.now()
+      }]);
+      
+      showNotification('Strategie-Vorschlag generiert.', 'success');
+    } catch (err) {
+      console.error('Strategy Suggestion Error:', err);
+      showNotification('Fehler beim Generieren des Vorschlags.', 'warn');
+    } finally {
+      setIsChatting(false);
+    }
+  }, [isChatting, missionInput, pinnedBlockerItems, pinnedIntelItems, setLogs, showNotification]);
+
   return {
     chatInput,
     setChatInput,
     isChatting,
     setIsChatting,
-    handleChatSubmit
+    handleChatSubmit,
+    handleSuggestNextTask
   };
 }

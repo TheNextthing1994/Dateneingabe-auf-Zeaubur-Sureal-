@@ -263,18 +263,9 @@ export default function App() {
     pinnedBlockerItems
   );
   
-  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>(() => {
-    const saved = localStorage.getItem('daily_intels');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>([]);
   const [isProcessingIntel, setIsProcessingIntel] = useState(false);
   const processedUrls = useRef<Set<string>>(new Set());
-
-  // Persist dailyIntels to localStorage
-  useEffect(() => {
-    console.log('Daily Intels state changed:', dailyIntels.length, 'items');
-    localStorage.setItem('daily_intels', JSON.stringify(dailyIntels));
-  }, [dailyIntels]);
 
   const processIncomingIntel = async (url: string, title?: string) => {
     if (isProcessingIntel) return;
@@ -442,8 +433,21 @@ export default function App() {
           };
 
           setDailyIntels(prev => [updatedIntel, ...prev.filter(i => i.id !== targetId)]);
-          if (surrealStatus === 'connected') {
-            await surrealService.updateDailyIntel(targetId, updatedIntel);
+          
+          if (surrealConfig.url) {
+            // Wait up to 5 seconds for connection if it's still connecting
+            let attempts = 0;
+            while (!surrealService.isConnected() && attempts < 10) {
+              await new Promise(r => setTimeout(r, 500));
+              attempts++;
+            }
+            
+            if (surrealService.isConnected()) {
+              await surrealService.updateDailyIntel(targetId, updatedIntel);
+              console.log('SurrealDB: Updated intel successfully');
+            } else {
+              console.warn('SurrealDB: Could not update intel because connection was not established in time');
+            }
           }
           showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic.headline}`, 'success');
           return;
@@ -464,8 +468,23 @@ export default function App() {
       };
 
       setDailyIntels(prev => [newIntel, ...prev]);
-      if (surrealStatus === 'connected') {
-        await surrealService.saveDailyIntel(newIntel);
+      
+      // Ensure we save to SurrealDB if configured
+      if (surrealConfig.url) {
+        // Wait up to 5 seconds for connection if it's still connecting
+        let attempts = 0;
+        while (!surrealService.isConnected() && attempts < 10) {
+          await new Promise(r => setTimeout(r, 500));
+          attempts++;
+        }
+        
+        if (surrealService.isConnected()) {
+          await surrealService.saveDailyIntel(newIntel);
+          console.log('SurrealDB: Saved new intel successfully');
+        } else {
+          console.warn('SurrealDB: Could not save intel because connection was not established in time');
+          showNotification("SurrealDB nicht bereit - Intel nur temporär gespeichert", 'warn');
+        }
       }
 
       showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic.headline}`, 'success');

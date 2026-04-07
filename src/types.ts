@@ -5,6 +5,14 @@
 
 import { SimulationNodeDatum, SimulationLinkDatum } from 'd3';
 
+export interface SurrealConfig {
+  url: string;
+  ns: string;
+  db: string;
+  user?: string;
+  pass?: string;
+}
+
 export interface Pillar {
   id: string;
   name: string;
@@ -46,6 +54,31 @@ export interface MissionPlan {
   text: string;
   targetDate: string; // YYYY-MM-DD
   timestamp: number;
+}
+
+export interface DailyIntel {
+  id: string;
+  url: string;
+  title: string;
+  timestamp: number;
+  supreme_decision: 'discard' | 'archive' | 'build' | 'merge';
+  merge_with_id?: string;
+  additional_urls?: string[];
+  analyst_report: {
+    core_points: string[];
+    relevance_score: number;
+    goal_alignment: string;
+  };
+  builder_plan?: {
+    steps: string[];
+    tech_stack_notes: string;
+  };
+  navigator_infographic: {
+    headline: string;
+    visual_summary: string[];
+    punchline: string;
+  };
+  chronicle_log: string[];
 }
 
 export interface BillboardItem {

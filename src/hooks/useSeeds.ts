@@ -353,6 +353,26 @@ export function useSeeds(
     isFileLoading,
     setIsAnalyzing,
     handleAnalyze,
-    handleFileUpload
+    handleFileUpload,
+    handleDeleteSeed: useCallback(async (item: AnalyzedItem) => {
+      try {
+        if (surrealStatus === 'connected' && item.rawId) {
+          await surrealService.deleteSeed(item.rawId);
+        }
+        
+        setAnalyzedItems(prev => prev.filter(i => i.id !== item.id));
+        showNotification('Seed erfolgreich gelöscht.', 'info');
+        
+        setLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'System',
+          text: `Seed gelöscht: ${(item.text || '').substring(0, 30)}...`,
+          timestamp: Date.now()
+        }]);
+      } catch (err) {
+        console.error('Delete Error:', err);
+        showNotification('Fehler beim Löschen des Seeds.', 'warn');
+      }
+    }, [surrealStatus, setAnalyzedItems, showNotification, setLogs])
   };
 }
