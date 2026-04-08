@@ -444,15 +444,24 @@ class SurrealService {
   async saveDailyIntel(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = data.id.includes(':') ? data.id : `INTEL_FEED:${data.id}`;
+    
+    // Strip id from data to avoid conflicts with the record id in SCHEMAFULL tables
+    const { id, ...content } = data;
+    
     console.log('SurrealDB: Upserting daily intel to:', fullId);
     try {
-      // Using UPSERT is more robust as it handles both create and update
-      const result = await (this.db as any).query(`UPSERT ${fullId} CONTENT $data`, { data });
+      // Using UPSERT with MERGE is often safer for SCHEMAFULL if some fields might be missing
+      const result = await (this.db as any).query(`UPSERT ${fullId} MERGE $content`, { content });
       console.log('SurrealDB: Upsert result:', result);
       return result;
     } catch (err) {
       console.error('SurrealDB: Upsert failed:', err);
-      throw err;
+      // If MERGE fails, try CONTENT as a last resort
+      try {
+        return await (this.db as any).query(`UPSERT ${fullId} CONTENT $content`, { content });
+      } catch (innerErr) {
+        throw err;
+      }
     }
   }
 
