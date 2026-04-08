@@ -73,10 +73,10 @@ export function BoardCard({
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
       className={cn(
-        "p-4 rounded-2xl border transition-all relative group backdrop-blur-md glass-card",
-        isGC ? "border-primary/30 shadow-lg shadow-primary/5 hover:border-primary/60 text-white" : 
-        isNoise ? "border-white/5 line-through text-slate-600 opacity-50" :
-        "border-white/10 shadow-sm hover:border-white/20 text-slate-200"
+        "p-4 rounded-2xl border transition-all relative group backdrop-blur-sm",
+        isGC ? "bg-primary/[0.02] border-primary/30 shadow-lg shadow-primary/5 hover:border-primary/60 text-white" : 
+        isNoise ? "bg-white/[0.01] border-white/5 line-through text-slate-600 opacity-50" :
+        "bg-white/[0.03] border-white/10 shadow-sm hover:border-white/20 text-slate-200"
       )}
     >
       <div className={cn("flex justify-between items-start mb-3", isNoise && "opacity-50")}>

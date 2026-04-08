@@ -165,7 +165,7 @@ export function KernView({
       className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto lg:overflow-hidden scrollbar-hide pb-20 lg:pb-0"
     >
       {/* Left Panel: Input & Status */}
-      <section className="lg:w-1/3 bg-dark p-4 sm:p-5 border-r border-white/5 flex flex-col lg:overflow-y-auto lg:h-full">
+      <section className="lg:w-1/3 bg-[#0a0b10] p-4 sm:p-5 border-r border-white/10 flex flex-col lg:overflow-y-auto lg:h-full relative z-10 shadow-[8px_0_32px_rgba(0,0,0,0.6)]">
         {/* Log & Chat Area */}
         <div className="flex-1 flex flex-col min-h-0 lg:overflow-hidden">
 
@@ -255,11 +255,10 @@ export function KernView({
                   </AnimatePresence>
                 </div>
               )}
-
               {/* Chat Messages */}
               <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-3 min-h-[150px] lg:min-h-0">
                 <AnimatePresence initial={false}>
-                  {logs.filter(l => l.sender !== 'System').map((log) => (
+                  {[...logs].filter(l => l.sender !== 'System').reverse().map((log) => (
                     <motion.div 
                       key={log.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -489,10 +488,12 @@ export function KernView({
       </section>
 
       {/* Right Panel: Dashboard */}
-      <section className="lg:w-2/3 bg-dark flex flex-col lg:overflow-y-auto relative lg:h-full">
+      <section className="lg:w-2/3 bg-[#0f1117] tech-grid flex flex-col lg:overflow-y-auto relative lg:h-full">
+        {/* Subtle Glow Divider */}
+        <div className="absolute left-0 top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-primary/20 to-transparent z-20" />
         
         {/* Top Dashboard */}
-        <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50">
+        <div className="p-4 sm:p-6 border-b border-white/5 bg-[#12141c]/80 backdrop-blur-md">
           <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8">
             <div className="2xl:col-span-2 min-w-0">
               {/* Operative Dashboard */}
@@ -552,9 +553,9 @@ export function KernView({
                           className="flex flex-col items-center group outline-none w-full"
                         >
                           <div className={cn(
-                            "w-full bg-panel/30 backdrop-blur-md rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
+                            "w-full bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
                             isActive 
-                              ? "border-primary shadow-[0_0_20px_rgba(16,185,129,0.15)] scale-[1.02]" 
+                              ? "border-primary/50 bg-primary/[0.02] shadow-[0_0_20px_rgba(16,185,129,0.05)] scale-[1.02]" 
                               : "border-white/5 hover:border-white/10",
                             tile.id === 'in_arbeit' && count > 0 && "shadow-[0_0_25px_rgba(59,130,246,0.15)]",
                             tile.id === 'blockiert' && count > 0 && "border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
@@ -618,7 +619,7 @@ export function KernView({
                   </span>
                 </div>
                 
-                <div className="bg-panel/30 backdrop-blur-md border border-white/5 rounded-3xl p-6">
+                <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6">
                   <div className="flex gap-2 mb-4">
                     <input 
                       type="text"

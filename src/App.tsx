@@ -1537,7 +1537,7 @@ export default function App() {
 
   useEffect(() => {
     if (chatLogRef.current) {
-      chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
+      chatLogRef.current.scrollTop = 0;
     }
   }, [logs]);
 
