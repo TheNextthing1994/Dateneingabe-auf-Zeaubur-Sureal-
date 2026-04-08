@@ -468,24 +468,37 @@ class SurrealService {
   async getDailyIntels(): Promise<any[]> {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     try {
-      // Query without ORDER BY first to see if it works at all
+      console.log('SurrealDB: Fetching daily intels...');
       const results = await (this.db as any).query('SELECT * FROM INTEL_FEED');
+      console.log('SurrealDB: Raw Daily Intel Response:', results);
+      
       let records: any[] = [];
       
       if (Array.isArray(results)) {
-        // results is [ { result: [...], status: 'OK', time: '...' } ]
-        records = results[0]?.result || [];
+        // Check if it's an array of result objects (standard for .query())
+        if (results.length > 0 && results[0] && typeof results[0] === 'object' && 'result' in results[0]) {
+          records = results[0].result;
+        } else {
+          // It might be the array of records directly
+          records = results;
+        }
       } else if (results && typeof results === 'object') {
+        // Single result object
         records = (results as any).result || [];
       }
 
-      if (!Array.isArray(records)) return [];
+      if (!Array.isArray(records)) {
+        console.warn('SurrealDB: Daily Intel records is not an array:', records);
+        return [];
+      }
 
-      return records.map(item => {
-        // In SurrealDB 2.x/3.x, id is a RecordId object, use .toString()
+      const mapped = records.map(item => {
         const fullId = item.id ? item.id.toString() : '';
         return { ...item, id: fullId, rawId: fullId };
       }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      
+      console.log('SurrealDB: Mapped', mapped.length, 'daily intels');
+      return mapped;
     } catch (err: any) {
       console.error('SurrealDB: getDailyIntels failed:', err);
       return [];
@@ -501,8 +514,9 @@ class SurrealService {
   async updateDailyIntel(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
+    const { id, ...content } = data;
     console.log('SurrealDB: Updating daily intel via UPSERT:', fullId);
-    return await (this.db as any).query(`UPSERT ${fullId} MERGE $data`, { data });
+    return await (this.db as any).query(`UPSERT ${fullId} MERGE $content`, { content });
   }
 
   async getLogs(): Promise<any[]> {

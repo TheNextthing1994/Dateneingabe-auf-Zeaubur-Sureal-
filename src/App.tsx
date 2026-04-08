@@ -263,7 +263,22 @@ export default function App() {
     pinnedBlockerItems
   );
   
-  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>([]);
+  const [dailyIntels, setDailyIntels] = useState<DailyIntel[]>(() => {
+    const saved = localStorage.getItem('dt_daily_intels');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved daily intels:', e);
+      }
+    }
+    return [];
+  });
+
+  // Persist dailyIntels to localStorage
+  useEffect(() => {
+    localStorage.setItem('dt_daily_intels', JSON.stringify(dailyIntels));
+  }, [dailyIntels]);
   const [isProcessingIntel, setIsProcessingIntel] = useState(false);
   const processedUrls = useRef<Set<string>>(new Set());
 
