@@ -44,36 +44,49 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
     );
   }
 
+  const formatTimestamp = (ts: any) => {
+    if (!ts) return 'Kein Datum';
+    const date = new Date(typeof ts === 'string' ? (isNaN(Number(ts)) ? ts : Number(ts)) : ts);
+    if (isNaN(date.getTime())) return 'Ungültiges Datum';
+    return `${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${date.toLocaleDateString()}`;
+  };
+
   return (
     <div className="space-y-12 pb-20">
       <AnimatePresence mode="popLayout">
-        {items.map((item) => (
-          <motion.div
-            key={item.id}
-            layout
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="relative max-w-lg mx-auto"
-          >
-            {/* Infographic Container (Shorts Style) */}
-            <div className="relative bg-slate-900 border-2 border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-black/50">
-              {/* Top Bar */}
-              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-primary via-amber-500 to-primary animate-pulse" />
-              
-              {/* Header Info */}
-              <div className="p-8 pb-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Morning Navigator</div>
-                    <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                      {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(item.timestamp).toLocaleDateString()}
+        {items.map((item) => {
+          // Debug log for items that seem broken
+          if (!item.navigator_infographic || !item.timestamp) {
+            console.warn('IntelFeed: Rendering potentially broken item:', item);
+          }
+          
+          return (
+            <motion.div
+              key={item.id}
+              layout
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative max-w-lg mx-auto"
+            >
+              {/* Infographic Container (Shorts Style) */}
+              <div className="relative bg-slate-900 border-2 border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-black/50">
+                {/* Top Bar */}
+                <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-primary via-amber-500 to-primary animate-pulse" />
+                
+                {/* Header Info */}
+                <div className="p-8 pb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Morning Navigator</div>
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                        {formatTimestamp(item.timestamp)}
+                      </div>
                     </div>
                   </div>
-                </div>
                 <div className="flex items-center gap-2">
                   {item.additional_urls && item.additional_urls.length > 0 && (
                     <div className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-1.5">
@@ -94,12 +107,12 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
               <div className="px-8 space-y-8">
                 {/* Headline */}
                 <h2 className="text-2xl font-black text-white leading-tight tracking-tight">
-                  {item.navigator_infographic.headline}
+                  {item.navigator_infographic?.headline || item.title}
                 </h2>
 
                 {/* Visual Summary (The "Shorts" Content) */}
                 <div className="space-y-4">
-                  {item.navigator_infographic.visual_summary.map((line, i) => (
+                  {item.navigator_infographic?.visual_summary?.map((line, i) => (
                     <motion.div 
                       key={i}
                       initial={{ opacity: 0, x: -20 }}
@@ -116,28 +129,32 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                 </div>
 
                 {/* Punchline */}
-                <div className="py-4 px-6 bg-primary/10 border border-primary/20 rounded-2xl">
-                  <p className="text-sm font-black text-primary italic text-center">
-                    "{item.navigator_infographic.punchline}"
-                  </p>
-                </div>
+                {item.navigator_infographic?.punchline && (
+                  <div className="py-4 px-6 bg-primary/10 border border-primary/20 rounded-2xl">
+                    <p className="text-sm font-black text-primary italic text-center">
+                      "{item.navigator_infographic.punchline}"
+                    </p>
+                  </div>
+                )}
 
                 {/* Agent Reports (Expandable/Tabs) */}
                 <div className="space-y-6 pt-4 border-t border-white/5">
                   {/* Analyst Report */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        <ShieldCheck className="w-3 h-3" /> Analyst Officer
+                  {item.analyst_report && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                          <ShieldCheck className="w-3 h-3" /> Analyst Officer
+                        </div>
+                        <div className="px-2 py-0.5 bg-amber-500/20 text-amber-500 rounded-full text-[9px] font-black">
+                          SCORE: {item.analyst_report.relevance_score}/10
+                        </div>
                       </div>
-                      <div className="px-2 py-0.5 bg-amber-500/20 text-amber-500 rounded-full text-[9px] font-black">
-                        SCORE: {item.analyst_report.relevance_score}/10
+                      <div className="text-xs text-slate-400 leading-relaxed">
+                        {item.analyst_report.goal_alignment}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-400 leading-relaxed">
-                      {item.analyst_report.goal_alignment}
-                    </div>
-                  </div>
+                  )}
 
                   {/* Supreme Decision */}
                   <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
@@ -146,9 +163,9 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                     </div>
                     <div className={cn(
                       "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
-                      item.supreme_decision === 'build' ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-300"
+                      (item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-300"
                     )}>
-                      {item.supreme_decision === 'build' ? 'BUILD MODE' : 'ARCHIVED'}
+                      {(item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? 'BUILD MODE' : 'ARCHIVED'}
                     </div>
                   </div>
 
@@ -159,7 +176,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                         <Hammer className="w-3 h-3" /> Builder Workflow
                       </div>
                       <div className="space-y-3">
-                        {item.builder_plan.steps.map((step, i) => (
+                        {item.builder_plan?.steps?.map((step, i) => (
                           <div key={i} className="flex items-start gap-3">
                             <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-black text-emerald-400 shrink-0">
                               {i + 1}
@@ -180,7 +197,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                       <History className="w-3 h-3" /> Chronicle Log
                     </div>
                     <div className="space-y-1">
-                      {item.chronicle_log.map((log, i) => (
+                      {item.chronicle_log?.map((log, i) => (
                         <div key={i} className="text-[9px] text-slate-600 font-medium flex items-center gap-2">
                           <span className="w-1 h-1 rounded-full bg-slate-700" />
                           {log}
@@ -214,7 +231,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                 
                 {item.additional_urls && item.additional_urls.length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {item.additional_urls.map((url, i) => (
+                    {item.additional_urls?.map((url, i) => (
                       <button 
                         key={i}
                         onClick={() => window.open(url, '_blank')}
@@ -232,8 +249,9 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
             {/* Background Glow */}
             <div className="absolute -inset-4 bg-primary/5 blur-3xl -z-10 rounded-full opacity-50" />
           </motion.div>
-        ))}
-      </AnimatePresence>
+        );
+      })}
+    </AnimatePresence>
     </div>
   );
 };

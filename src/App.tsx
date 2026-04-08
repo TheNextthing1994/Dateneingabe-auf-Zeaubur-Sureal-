@@ -103,7 +103,8 @@ import { useSeeds } from './hooks/useSeeds';
 import { useChat } from './hooks/useChat';
 import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
-import { IntelFeed, DailyIntel } from './components/IntelFeed';
+import { IntelFeed } from './components/IntelFeed';
+import { DailyIntel } from './types';
 
 ChartJS.register(
   RadialLinearScale,
@@ -304,8 +305,8 @@ export default function App() {
       const recentContext = dailyIntels.slice(0, 5).map(item => ({
         id: item.id,
         title: item.title,
-        headline: item.navigator_infographic.headline,
-        summary: item.navigator_infographic.visual_summary.join(' ')
+        headline: item.navigator_infographic?.headline || 'Keine Headline',
+        summary: item.navigator_infographic?.visual_summary?.join(' ') || ''
       }));
 
       let response;
@@ -472,7 +473,7 @@ export default function App() {
               showNotification("SurrealDB nicht bereit - Update nur lokal", 'warn');
             }
           }
-          showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic.headline}`, 'success');
+          showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic?.headline || 'Aktualisiert'}`, 'success');
           return;
         }
       }
@@ -519,7 +520,7 @@ export default function App() {
         console.warn('SurrealDB: No URL configured, skipping save');
       }
 
-      showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic.headline}`, 'success');
+      showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic?.headline || 'Neu'}`, 'success');
     } catch (err: any) {
       console.error('Error processing intel:', err);
       const errorMsg = err?.message || String(err);
@@ -540,17 +541,27 @@ export default function App() {
     if (surrealStatus === 'connected') {
       console.log('SurrealDB connected, triggering Daily Intel sync...');
       surrealService.getDailyIntels().then(items => {
-        console.log('SurrealDB: Loaded', items?.length, 'daily intels');
+        console.log('SurrealDB: Daily Intels from DB:', items);
         if (items && items.length > 0) {
           setDailyIntels(prev => {
+            console.log('SurrealDB: Merging with previous state:', prev);
             // Merge DB items with local items, prioritizing DB items by ID
             const combined = [...items, ...prev];
             const unique = combined.filter((item, index, self) => {
-              const firstIndex = self.findIndex((t) => t.id === item.id);
+              // Ensure we compare clean IDs
+              const currentId = item.id.includes(':') ? item.id.split(':')[1] : item.id;
+              const firstIndex = self.findIndex((t) => {
+                const targetId = t.id.includes(':') ? t.id.split(':')[1] : t.id;
+                return targetId === currentId;
+              });
               return index === firstIndex;
             });
-            const sorted = unique.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            console.log('SurrealDB: Sync complete, total items:', sorted.length);
+            const sorted = unique.sort((a, b) => {
+              const tsA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+              const tsB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+              return tsB - tsA;
+            });
+            console.log('SurrealDB: Final synced state:', sorted);
             return sorted;
           });
         }
@@ -1296,7 +1307,7 @@ export default function App() {
       };
 
       setPinnedIntelItems(prev => prev.map(i => i.id === item.id ? updatedItem : i));
-      localStorage.setItem('dt_pinned_intel_items', JSON.stringify(pinnedIntelItems.map(i => i.id === item.id ? updatedItem : i)));
+      localStorage.setItem('dt_pinned_intel_items', JSON.stringify(pinnedIntelItems?.map(i => i.id === item.id ? updatedItem : i) || []));
       
       if (surrealStatus === 'connected') {
         surrealService.updateBillboardItem(item.id, updatedItem).catch(console.error);
@@ -1982,8 +1993,8 @@ export default function App() {
         TOP GAME CHANGER: ${topGameChanger ? `[${topGameChanger.vaultId.toUpperCase()}] ${topGameChanger.text} (Score: ${topGameChanger.score})` : 'Kein Game Changer vorhanden.'}
         
         BILLBOARD-KONTEXT:
-        - INTEL: ${pinnedIntelItems.map(i => i.text).join(', ') || 'Keine'}
-        - BLOCKER: ${pinnedBlockerItems.map(i => i.text).join(', ') || 'Keine'}
+        - INTEL: ${pinnedIntelItems?.map(i => i.text).join(', ') || 'Keine'}
+        - BLOCKER: ${pinnedBlockerItems?.map(i => i.text).join(', ') || 'Keine'}
         
         Antworte extrem kurz, direkt und handlungsorientiert (max. 2 Sätze).
       `;

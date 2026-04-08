@@ -155,8 +155,8 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
         TOP GAME CHANGER: ${topGameChanger ? `[${topGameChanger.vaultId.toUpperCase()}] ${topGameChanger.text} (Score: ${topGameChanger.score})` : 'Kein Game Changer vorhanden.'}
         
         BILLBOARD-KONTEXT:
-        - INTEL: ${pinnedIntelItems.map(i => i.text).join(', ') || 'Keine'}
-        - BLOCKER: ${pinnedBlockerItems.map(i => i.text).join(', ') || 'Keine'}
+        - INTEL: ${pinnedIntelItems?.map(i => i.text).join(', ') || 'Keine'}
+        - BLOCKER: ${pinnedBlockerItems?.map(i => i.text).join(', ') || 'Keine'}
         
         Antworte extrem kurz, direkt und handlungsorientiert (max. 2 Sätze).
       `;

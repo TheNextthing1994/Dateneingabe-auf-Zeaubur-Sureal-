@@ -493,8 +493,26 @@ class SurrealService {
       }
 
       const mapped = records.map(item => {
-        const fullId = item.id ? item.id.toString() : '';
-        return { ...item, id: fullId, rawId: fullId };
+        // Normalize ID: always use the part after the colon if it exists
+        let cleanId = item.id ? item.id.toString() : '';
+        if (cleanId.includes(':')) {
+          cleanId = cleanId.split(':')[1];
+        }
+        
+        // Ensure timestamp is a number
+        let ts = item.timestamp;
+        if (typeof ts === 'string') {
+          ts = Number(ts.replace(/\./g, '')); // Remove dots if SurrealDB explorer added them
+        }
+        if (isNaN(Number(ts))) ts = Date.now();
+        
+        return { 
+          ...item, 
+          id: cleanId, // Use clean ID for local state matching
+          rawId: item.id?.toString(), // Keep full ID for DB operations
+          timestamp: Number(ts),
+          supreme_decision: item.supreme_decision?.toString() || 'archive'
+        };
       }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       
       console.log('SurrealDB: Mapped', mapped.length, 'daily intels');
@@ -508,13 +526,14 @@ class SurrealService {
   async deleteDailyIntel(recordId: string) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
+    console.log('SurrealDB: Deleting daily intel:', fullId);
     return await (this.db as any).query(`DELETE ${fullId}`);
   }
 
   async updateDailyIntel(recordId: string, data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = recordId.includes(':') ? recordId : `INTEL_FEED:${recordId}`;
-    const { id, ...content } = data;
+    const { id, rawId, ...content } = data;
     console.log('SurrealDB: Updating daily intel via UPSERT:', fullId);
     return await (this.db as any).query(`UPSERT ${fullId} MERGE $content`, { content });
   }

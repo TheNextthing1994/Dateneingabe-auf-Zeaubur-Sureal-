@@ -968,7 +968,7 @@ export function KernView({
                     
                     <div className="space-y-3">
                       <AnimatePresence mode="popLayout">
-                        {pinnedIntelItems.map(item => (
+                        {pinnedIntelItems?.map(item => (
                           <BillboardCard 
                             key={item.id} 
                             item={item} 
@@ -1009,7 +1009,7 @@ export function KernView({
                     
                     <div className="space-y-3">
                       <AnimatePresence mode="popLayout">
-                        {pinnedBlockerItems.map(item => (
+                        {pinnedBlockerItems?.map(item => (
                           <BillboardCard 
                             key={item.id} 
                             item={item} 
