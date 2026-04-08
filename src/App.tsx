@@ -81,7 +81,10 @@ import {
   Network,
   Share2,
   Info,
-  MousePointer2 as MouseSquare
+  MousePointer2 as MouseSquare,
+  Cpu,
+  Orbit,
+  Hexagon
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import * as d3 from 'd3';
@@ -2163,11 +2166,55 @@ export default function App() {
       {/* Top Navigation */}
       <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-8">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-primary/20 rounded-lg border border-primary/30">
-              <Brain className="w-4 h-4 text-primary" />
+          <div className="flex items-center gap-4 group cursor-pointer">
+            <div className="relative w-10 h-10 flex items-center justify-center">
+              {/* Sharingan Base (Red Iris) */}
+              <div className="absolute inset-0 bg-red-600 rounded-full border border-red-900 shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(220,38,38,0.6)] group-hover:bg-red-500" />
+              
+              {/* Sharingan Rings */}
+              <div className="absolute inset-1 border border-black/30 rounded-full" />
+              
+              {/* Central Pupil */}
+              <div className="absolute z-20 w-2.5 h-2.5 bg-black rounded-full" />
+              
+              {/* Tomoe Container (Rotating) */}
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-0 z-10"
+              >
+                {[0, 120, 240].map((angle, i) => (
+                  <div 
+                    key={i}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full"
+                    style={{ transform: `translate(-50%, -50%) rotate(${angle}deg)` }}
+                  >
+                    {/* Tomoe Shape (Comma) */}
+                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2">
+                      <svg width="8" height="10" viewBox="0 0 8 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 0C1.79086 0 0 1.79086 0 4C0 6.20914 1.79086 8 4 8C6.20914 8 8 6.20914 8 4C8 1.79086 6.20914 0 4 0Z" fill="black"/>
+                        <path d="M4 2C4 2 7 3 7 6C7 9 4 10 4 10C4 10 1 9 1 6C1 3 4 2 4 2Z" fill="black"/>
+                      </svg>
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+
+              {/* Mangekyou Activation Glow (on hover) */}
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.8 }}
+                whileHover={{ opacity: 1, scale: 1.2 }}
+                className="absolute inset-0 bg-red-500/20 rounded-full blur-xl pointer-events-none"
+              />
             </div>
-            <span className="hidden sm:inline font-black text-sm tracking-tighter text-white uppercase">D.T. KERN</span>
+            
+            <div className="flex flex-col">
+              <span className="text-2xl font-black tracking-[-0.05em] text-white leading-none transition-colors duration-500 group-hover:text-red-500">KERN</span>
+              <div className="flex items-center gap-1.5 mt-1">
+                <div className="h-[1px] w-3 bg-red-600/40 group-hover:w-5 transition-all duration-500" />
+                <span className="text-[8px] font-bold text-red-500/60 uppercase tracking-[0.4em] leading-none">Digital Twin</span>
+              </div>
+            </div>
           </div>
           
           <div className="hidden lg:flex items-center bg-white/[0.03] rounded-xl p-0.5 sm:p-1 border border-white/5">
