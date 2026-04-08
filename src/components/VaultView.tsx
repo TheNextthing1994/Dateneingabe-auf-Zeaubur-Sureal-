@@ -368,7 +368,7 @@ export function VaultView({
                       </div>
                       <h4 className="text-lg font-bold text-slate-500 uppercase tracking-widest mb-2">Kein Wissen gefunden</h4>
                       <p className="text-sm text-slate-600 max-w-xs mx-auto">
-                        Passe deine Filter an oder füge neue Seeds im KERN hinzu, um deine Bibliothek zu füllen.
+                        Passe deine Filter an oder füge neue Seeds im D.T hinzu, um deine Bibliothek zu füllen.
                       </p>
                     </div>
                   ) : (

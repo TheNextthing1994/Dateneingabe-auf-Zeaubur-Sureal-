@@ -258,7 +258,7 @@ export function BoardCard({
               ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" 
               : "bg-indigo-500/10 text-indigo-500 border-indigo-500/20 hover:bg-indigo-500/20"
           )}
-          title={item.isArchived ? "Wiederherstellen in KERN" : "In Vault bestätigen"}
+          title={item.isArchived ? "Wiederherstellen in D.T" : "In Vault bestätigen"}
         >
           {item.isArchived ? <RotateCcw className="w-4 h-4 md:w-3.5 md:h-3.5" /> : <Database className="w-4 h-4 md:w-3.5 md:h-3.5" />}
         </button>

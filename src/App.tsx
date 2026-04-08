@@ -108,6 +108,8 @@ import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
 import { IntelFeed } from './components/IntelFeed';
 import { DailyIntel } from './types';
+import { LoadingScreen } from './components/LoadingScreen';
+import { BriefingOverlay } from './components/BriefingOverlay';
 
 ChartJS.register(
   RadialLinearScale,
@@ -204,6 +206,8 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 
 export default function App() {
   const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video'>('kern');
+  const [isLoading, setIsLoading] = useState(true);
+  const [showBriefing, setShowBriefing] = useState(false);
   const [shareData, setShareData] = useState<{ url: string; prompt: string; auto: boolean } | null>(null);
   
   useEffect(() => {
@@ -1875,7 +1879,7 @@ export default function App() {
       }
     }
     
-    showNotification(`Seed wieder in den KERN verschoben.`, 'success');
+    showNotification(`Seed wieder in den D.T verschoben.`, 'success');
   };
 
   const handleUpdateVault = async (itemId: string, vaultId: AnalyzedItem['vaultId']) => {
@@ -2162,38 +2166,79 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans">
+    <>
+      <AnimatePresence mode="wait">
+        {isLoading && (
+          <LoadingScreen key="loader" onComplete={() => {
+            setIsLoading(false);
+            setShowBriefing(true);
+          }} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showBriefing && (
+          <BriefingOverlay 
+            key="briefing"
+            onDismiss={() => {
+              setShowBriefing(false);
+              showNotification("Mission aktiv. D.T Core bereit.", 'info');
+            }} 
+            onShowIntel={() => {
+              setShowBriefing(false);
+              setActiveView('vault');
+              setLibraryTab('intel');
+            }}
+            onShowDetails={() => {
+              setShowBriefing(false);
+              setActiveView('vault');
+              setLibraryTab('all');
+            }}
+            mission={todaysMission?.text}
+            stats={{
+              seeds: analyzedItems.length,
+              intel: dailyIntels.length,
+              sync: surrealStatus === 'connected' ? 'STABIL' : 'LOKAL'
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="min-h-screen lg:h-screen flex flex-col bg-dark text-slate-50 font-sans">
       {/* Top Navigation */}
       <nav className="h-14 border-b border-white/5 bg-black/40 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-8">
           <div className="flex items-center gap-4 group cursor-pointer">
-            <div className="relative w-10 h-10 flex items-center justify-center">
-              {/* Sharingan Base (Red Iris) */}
-              <div className="absolute inset-0 bg-red-600 rounded-full border border-red-900 shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(220,38,38,0.6)] group-hover:bg-red-500" />
+            <div className="relative w-12 h-12 flex items-center justify-center">
+              {/* Sharingan Base (Red Iris) - Rotating slowly */}
+              <motion.div 
+                animate={{ rotate: -360 }}
+                transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+                className="absolute w-8 h-8 bg-red-600 rounded-full border border-red-900 shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(220,38,38,0.5)] group-hover:bg-red-500 flex items-center justify-center"
+              >
+                {/* Central Pupil */}
+                <div className="w-2 h-2 bg-black rounded-full" />
+                {/* Inner Ring */}
+                <div className="absolute inset-1 border border-black/20 rounded-full" />
+              </motion.div>
               
-              {/* Sharingan Rings */}
-              <div className="absolute inset-1 border border-black/30 rounded-full" />
-              
-              {/* Central Pupil */}
-              <div className="absolute z-20 w-2.5 h-2.5 bg-black rounded-full" />
-              
-              {/* Tomoe Container (Rotating) */}
+              {/* Tomoe Container (Inside the iris) */}
               <motion.div 
                 animate={{ rotate: 360 }}
                 transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 z-10"
+                className="absolute w-6 h-6 z-10"
               >
                 {[0, 120, 240].map((angle, i) => (
                   <div 
                     key={i}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full"
-                    style={{ transform: `translate(-50%, -50%) rotate(${angle}deg)` }}
+                    className="absolute inset-0"
+                    style={{ transform: `rotate(${angle}deg)` }}
                   >
-                    {/* Tomoe Shape (Comma) */}
-                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2">
-                      <svg width="8" height="10" viewBox="0 0 8 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M4 0C1.79086 0 0 1.79086 0 4C0 6.20914 1.79086 8 4 8C6.20914 8 8 6.20914 8 4C8 1.79086 6.20914 0 4 0Z" fill="black"/>
-                        <path d="M4 2C4 2 7 3 7 6C7 9 4 10 4 10C4 10 1 9 1 6C1 3 4 2 4 2Z" fill="black"/>
+                    {/* Tomoe Shape (Comma) positioned inside the iris */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2">
+                      <svg width="6" height="8" viewBox="0 0 10 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_1px_rgba(0,0,0,0.5)] rotate-[165deg]">
+                        <path d="M5 2C3.34315 2 2 3.34315 2 5C2 6.65685 3.34315 8 5 8C6.65685 8 8 6.65685 8 5C8 3.34315 6.65685 2 5 2Z" fill="black"/>
+                        <path d="M5 3.5C5 3.5 9 4 9 7.5C9 11 6 12 5 12C4 12 1 11 1 7.5C1 4 4 3.5 5 3.5Z" fill="black"/>
                       </svg>
                     </div>
                   </div>
@@ -2204,12 +2249,12 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.8 }}
                 whileHover={{ opacity: 1, scale: 1.2 }}
-                className="absolute inset-0 bg-red-500/20 rounded-full blur-xl pointer-events-none"
+                className="absolute inset-0 bg-red-500/10 rounded-full blur-xl pointer-events-none"
               />
             </div>
             
             <div className="flex flex-col">
-              <span className="text-2xl font-black tracking-[-0.05em] text-white leading-none transition-colors duration-500 group-hover:text-red-500">KERN</span>
+              <span className="text-2xl font-black tracking-[-0.05em] text-white leading-none transition-colors duration-500 group-hover:text-red-500 uppercase">D.T</span>
               <div className="flex items-center gap-1.5 mt-1">
                 <div className="h-[1px] w-3 bg-red-600/40 group-hover:w-5 transition-all duration-500" />
                 <span className="text-[8px] font-bold text-red-500/60 uppercase tracking-[0.4em] leading-none">Digital Twin</span>
@@ -2227,7 +2272,7 @@ export default function App() {
                   : "text-slate-500 hover:text-slate-300"
               )}
             >
-              KERN
+              D.T
             </button>
             <button 
               onClick={() => setActiveView('vault')}
@@ -3322,7 +3367,8 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
-      );
+      </>
+    );
 }
 
 interface BoardCardProps {
