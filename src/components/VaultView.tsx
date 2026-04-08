@@ -25,7 +25,9 @@ import {
   ArrowUpRight,
   Clock,
   ArrowRight,
-  MessageSquare
+  MessageSquare,
+  Filter,
+  Menu
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AnalyzedItem, Pillar, BillboardItem, DailyIntel } from '../types';
@@ -107,6 +109,8 @@ export function VaultView({
   showNotification,
   knowledgePressure
 }: VaultViewProps) {
+  const [showMobileFilters, setShowMobileFilters] = React.useState(false);
+
   const librarySections = useMemo(() => {
     const sections: { title: string; icon: React.ReactNode; items: AnalyzedItem[] }[] = [];
     
@@ -131,20 +135,22 @@ export function VaultView({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{ duration: 0.3 }}
-      className="flex-1 flex flex-col overflow-hidden h-full bg-slate-950/40 backdrop-blur-md rounded-3xl border border-white/5"
+      className="flex-1 flex flex-col overflow-hidden h-full bg-slate-950/40 backdrop-blur-md rounded-3xl border border-white/5 tech-grid"
     >
       {/* Library Header */}
-      <div className="px-8 py-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-900/20">
-        <div>
-          <h2 className="text-3xl font-black tracking-tighter text-white flex items-center gap-3">
-            <Database className="w-8 h-8 text-primary" /> 
-            KNOWLEDGE LIBRARY
-          </h2>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1.5 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            Zentraler Wissensraum & Strategisches Archiv
-          </p>
-          <div className="flex items-center bg-white/[0.03] rounded-xl p-1 border border-white/5 mt-3">
+      <div className="px-4 md:px-8 py-4 md:py-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6 bg-slate-900/20">
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <div>
+            <h2 className="text-xl md:text-3xl font-black tracking-tighter text-white flex items-center gap-3">
+              <Database className="w-6 h-6 md:w-8 md:h-8 text-primary" /> 
+              KNOWLEDGE LIBRARY
+            </h2>
+            <p className="hidden md:flex text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1.5 items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              Zentraler Wissensraum & Strategisches Archiv
+            </p>
+          </div>
+          <div className="flex items-center bg-white/[0.03] rounded-xl p-1 border border-white/5">
             <button 
               onClick={() => setLibraryTab('all')}
               className={cn(
@@ -166,17 +172,23 @@ export function VaultView({
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <div className="relative group">
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="relative group flex-1 md:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
             <input 
               type="text"
               placeholder="Wissen durchsuchen..."
               value={librarySearch}
               onChange={(e) => setLibrarySearch(e.target.value)}
-              className="bg-slate-900/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 w-64 transition-all"
+              className="bg-slate-900/50 border border-white/10 rounded-xl py-2 md:py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 w-full md:w-64 transition-all"
             />
           </div>
+          <button 
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className="lg:hidden p-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Filter className="w-4 h-4" />
+          </button>
           <button 
             onClick={() => {
               setLibrarySearch('');
@@ -199,9 +211,18 @@ export function VaultView({
         {libraryTab === 'all' ? (
           <>
             {/* 1. LEFT COLUMN: FILTERS */}
-            <aside className="hidden lg:flex w-72 border-r border-white/5 flex-col bg-slate-900/10">
-              <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
-                
+            <aside className={cn(
+              "lg:flex w-72 border-r border-white/5 flex-col bg-slate-900/10 transition-all duration-300",
+              showMobileFilters ? "fixed inset-0 z-50 bg-slate-950 flex" : "hidden"
+            )}>
+              <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide flex-1">
+                <div className="lg:hidden flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-black text-white uppercase tracking-widest">Filter</h3>
+                  <button onClick={() => setShowMobileFilters(false)} className="p-2 text-slate-400">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
                 {/* Filter: Typ */}
                 <div>
                   <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -211,10 +232,13 @@ export function VaultView({
                     {LIBRARY_TYPES.map(type => (
                       <button
                         key={type}
-                        onClick={() => setLibraryType(libraryType === type ? null : type)}
+                        onClick={() => {
+                          setLibraryType(libraryType === type ? null : type);
+                          if (window.innerWidth < 1024) setShowMobileFilters(false);
+                        }}
                         className={cn(
-                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group",
-                          libraryType === type ? "bg-primary/20 text-primary border border-primary/20" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"
+                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group agentic-border",
+                          libraryType === type ? "bg-primary/20 text-primary border-primary/40" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border-transparent"
                         )}
                       >
                         {type}
@@ -233,10 +257,13 @@ export function VaultView({
                     {LIBRARY_AREAS.map(area => (
                       <button
                         key={area.id}
-                        onClick={() => setLibraryArea(libraryArea === area.id ? null : area.id)}
+                        onClick={() => {
+                          setLibraryArea(libraryArea === area.id ? null : area.id);
+                          if (window.innerWidth < 1024) setShowMobileFilters(false);
+                        }}
                         className={cn(
-                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group",
-                          libraryArea === area.id ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/20" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"
+                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group agentic-border",
+                          libraryArea === area.id ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border-transparent"
                         )}
                       >
                         <span className="text-base">{area.icon}</span>
@@ -297,10 +324,13 @@ export function VaultView({
                     {VAULTS.map(v => (
                       <button
                         key={v.id}
-                        onClick={() => setSelectedFilterId(selectedFilterId === v.id ? null : v.id)}
+                        onClick={() => {
+                          setSelectedFilterId(selectedFilterId === v.id ? null : v.id);
+                          if (window.innerWidth < 1024) setShowMobileFilters(false);
+                        }}
                         className={cn(
-                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group",
-                          selectedFilterId === v.id ? "bg-primary/20 text-primary border border-primary/20" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"
+                          "w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-3 group agentic-border",
+                          selectedFilterId === v.id ? "bg-primary/20 text-primary border-primary/40" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border-transparent"
                         )}
                       >
                         <span className="text-base">{v.icon}</span>
@@ -314,13 +344,13 @@ export function VaultView({
 
             {/* 2. CENTER COLUMN: RESULTS */}
             <main className="flex-1 flex flex-col min-w-0 bg-slate-900/30">
-              <div className="p-8 flex-1 overflow-y-auto scrollbar-hide pb-24 lg:pb-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
+              <div className="p-4 md:p-8 flex-1 overflow-y-auto scrollbar-hide pb-24 lg:pb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                  <h3 className="text-[10px] md:text-xs font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
                     <Layout className="w-4 h-4" /> 
                     {(filteredLibraryItems?.length || 0)} Einträge gefunden
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
                     <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Sortierung:</span>
                     <select className="bg-transparent border-none text-[10px] font-black text-primary uppercase tracking-widest focus:ring-0 cursor-pointer">
                       <option>Neueste zuerst</option>

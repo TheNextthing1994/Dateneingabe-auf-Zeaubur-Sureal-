@@ -73,10 +73,10 @@ export function BoardCard({
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
       className={cn(
-        "p-4 rounded-2xl border transition-all relative group backdrop-blur-md",
-        isGC ? "bg-slate-800/40 border-primary/20 shadow-lg shadow-primary/5 hover:border-primary/40 text-white" : 
-        isNoise ? "bg-slate-950/20 border-white/5 line-through text-slate-600 opacity-50" :
-        "bg-slate-900/30 border-white/5 shadow-sm hover:border-white/10 text-slate-200"
+        "p-4 rounded-2xl border transition-all relative group backdrop-blur-md glass-card",
+        isGC ? "border-primary/30 shadow-lg shadow-primary/5 hover:border-primary/60 text-white" : 
+        isNoise ? "border-white/5 line-through text-slate-600 opacity-50" :
+        "border-white/10 shadow-sm hover:border-white/20 text-slate-200"
       )}
     >
       <div className={cn("flex justify-between items-start mb-3", isNoise && "opacity-50")}>
@@ -162,8 +162,8 @@ export function BoardCard({
             <Trash2 className="w-3 h-3" />
           </button>
           <div className={cn(
-            "px-2 py-1 rounded-lg text-[10px] font-bold font-mono",
-            isGC ? "bg-primary text-slate-900" : "bg-white/5 text-slate-400"
+            "px-2 py-1 rounded-lg text-[10px] font-black font-mono border",
+            isGC ? "bg-primary text-slate-900 border-primary" : "bg-white/5 text-slate-400 border-white/10"
           )}>
             {item.score.toFixed(1)}
           </div>
@@ -213,61 +213,61 @@ export function BoardCard({
         </div>
       )}
 
-      <div className="mt-4 pt-3 border-t border-white/5 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+      <div className="mt-4 pt-3 border-t border-white/5 flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
         <button 
           onClick={() => onToggleSelect(item)}
           className={cn(
-            "p-1.5 rounded-lg transition-all border flex-shrink-0 flex items-center gap-1.5 px-2.5",
+            "p-2 md:p-1.5 rounded-lg transition-all border flex-shrink-0 flex items-center gap-1.5 px-3 md:px-2.5",
             isSelected 
               ? "bg-primary text-slate-900 border-primary shadow-lg shadow-primary/20" 
               : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"
           )}
           title={isSelected ? "Aus Chat-Kontext entfernen" : "In Chat-Kontext ziehen"}
         >
-          <MessageSquare className={cn("w-3.5 h-3.5", isSelected ? "fill-current" : "")} />
-          <span className="text-[10px] font-bold uppercase tracking-wider">
+          <MessageSquare className={cn("w-4 h-4 md:w-3.5 md:h-3.5", isSelected ? "fill-current" : "")} />
+          <span className="text-[10px] font-black uppercase tracking-wider">
             {isSelected ? "Im Kontext" : "Kontext"}
           </span>
         </button>
         <button 
           onClick={() => onTakeToMission(item)}
-          className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all border border-primary/20 flex-shrink-0"
+          className="p-2 md:p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all border border-primary/20 flex-shrink-0"
           title="Zur aktiven Priorität"
         >
-          <ArrowUpRight className="w-3.5 h-3.5" />
+          <ArrowUpRight className="w-4 h-4 md:w-3.5 md:h-3.5" />
         </button>
         <button 
           onClick={() => onPin(item.text, 'intel', 'Seed', 'heute', item.nextStep)}
-          className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg hover:bg-emerald-500/20 transition-all border border-emerald-500/20 flex-shrink-0"
+          className="p-2 md:p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg hover:bg-emerald-500/20 transition-all border border-emerald-500/20 flex-shrink-0"
           title="Ins Billboard pinnen"
         >
-          <Pin className="w-3.5 h-3.5" />
+          <Pin className="w-4 h-4 md:w-3.5 md:h-3.5" />
         </button>
         <button 
           onClick={() => onMakeMission(item)}
-          className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg hover:bg-amber-500/20 transition-all border border-amber-500/20 flex-shrink-0"
+          className="p-2 md:p-1.5 bg-amber-500/10 text-amber-500 rounded-lg hover:bg-amber-500/20 transition-all border border-amber-500/20 flex-shrink-0"
           title="Mission daraus erzeugen"
         >
-          <Target className="w-3.5 h-3.5" />
+          <Target className="w-4 h-4 md:w-3.5 md:h-3.5" />
         </button>
         <button 
           onClick={() => item.isArchived ? onRestoreFromVault(item) : onMoveToVault(item)}
           className={cn(
-            "p-1.5 rounded-lg transition-all border flex-shrink-0",
+            "p-2 md:p-1.5 rounded-lg transition-all border flex-shrink-0",
             item.isArchived 
               ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" 
               : "bg-indigo-500/10 text-indigo-500 border-indigo-500/20 hover:bg-indigo-500/20"
           )}
           title={item.isArchived ? "Wiederherstellen in KERN" : "In Vault bestätigen"}
         >
-          {item.isArchived ? <RotateCcw className="w-3.5 h-3.5" /> : <Database className="w-3.5 h-3.5" />}
+          {item.isArchived ? <RotateCcw className="w-4 h-4 md:w-3.5 md:h-3.5" /> : <Database className="w-4 h-4 md:w-3.5 md:h-3.5" />}
         </button>
         <button 
           onClick={() => onDelete(item)}
-          className="p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0"
+          className="p-2 md:p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0"
           title="Ignorieren / Löschen"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-4 h-4 md:w-3.5 md:h-3.5" />
         </button>
       </div>
     </motion.div>

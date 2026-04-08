@@ -90,19 +90,19 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
               className="relative max-w-lg mx-auto"
             >
               {/* Infographic Container (Shorts Style) */}
-              <div className="relative bg-slate-900 border-2 border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-black/50">
+              <div className="relative bg-slate-900 border-2 border-white/10 rounded-[2rem] md:rounded-[2.5rem] overflow-hidden shadow-2xl shadow-black/50 glass-card">
                 {/* Top Bar */}
                 <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-primary via-amber-500 to-primary animate-pulse" />
                 
                 {/* Header Info */}
-                <div className="p-8 pb-4 flex items-center justify-between">
+                <div className="p-6 md:p-8 pb-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                      <Sparkles className="w-5 h-5 text-primary" />
+                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+                      <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                     </div>
                     <div>
-                      <div className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Morning Navigator</div>
-                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                      <div className="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-[0.2em]">Morning Navigator</div>
+                      <div className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                         {formatTimestamp(item.timestamp)}
                       </div>
                     </div>
@@ -124,24 +124,24 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
               </div>
 
               {/* Main Content (The Infographic) */}
-              <div className="px-8 space-y-8">
+              <div className="px-6 md:px-8 space-y-6 md:space-y-8">
                 {/* Headline */}
-                <h2 className="text-2xl font-black text-white leading-tight tracking-tight">
+                <h2 className="text-xl md:text-2xl font-black text-white leading-tight tracking-tight">
                   {item.navigator_infographic?.headline || item.title}
                 </h2>
 
                 {/* Visual Summary (The "Shorts" Content) */}
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
                   {item.navigator_infographic?.visual_summary?.map((line, i) => (
                     <motion.div 
                       key={i}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.1 + 0.3 }}
-                      className="flex items-start gap-4 group"
+                      className="flex items-start gap-3 md:gap-4 group"
                     >
-                      <div className="mt-1.5 w-2 h-2 rounded-full bg-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)] group-hover:scale-150 transition-transform" />
-                      <p className="text-base font-bold text-slate-200 leading-snug">
+                      <div className="mt-1.5 w-1.5 md:w-2 h-1.5 md:h-2 rounded-full bg-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)] group-hover:scale-150 transition-transform" />
+                      <p className="text-sm md:text-base font-bold text-slate-200 leading-snug">
                         {line}
                       </p>
                     </motion.div>
@@ -229,11 +229,11 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
               </div>
 
               {/* Action Bar */}
-              <div className="p-8 pt-4 flex flex-col gap-3">
-                <div className="flex gap-3">
+              <div className="p-6 md:p-8 pt-4 flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button 
                     onClick={() => window.open(item.url, '_blank')}
-                    className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    className="flex-1 py-3 md:py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                   >
                     <ExternalLink className="w-4 h-4" />
                     {item.additional_urls && item.additional_urls.length > 0 ? 'Video 1' : 'Video'}
@@ -241,7 +241,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                   {item.supreme_decision === 'build' && (
                     <button 
                       onClick={() => onUpdateStatus(item.id, 'active')}
-                      className="flex-[2] py-4 bg-primary text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95"
+                      className="flex-[2] py-3 md:py-4 bg-primary text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95"
                     >
                       <Hammer className="w-4 h-4" />
                       Plan Aktivieren
