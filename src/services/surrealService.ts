@@ -475,15 +475,15 @@ class SurrealService {
       let records: any[] = [];
       
       if (Array.isArray(results)) {
-        // Check if it's an array of result objects (standard for .query())
-        if (results.length > 0 && results[0] && typeof results[0] === 'object' && 'result' in results[0]) {
-          records = results[0].result;
+        const first = results[0];
+        if (first && typeof first === 'object' && 'result' in first) {
+          records = first.result;
+        } else if (Array.isArray(first)) {
+          records = first;
         } else {
-          // It might be the array of records directly
           records = results;
         }
       } else if (results && typeof results === 'object') {
-        // Single result object
         records = (results as any).result || [];
       }
 
