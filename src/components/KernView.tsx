@@ -49,15 +49,6 @@ import { BillboardCard } from './BillboardCard';
 import { BoardCard } from './BoardCard';
 
 interface KernViewProps {
-  seedInput: string;
-  setSeedInput: (val: string) => void;
-  isAnalyzing: boolean;
-  handleAnalyze: () => void;
-  isFileLoading: boolean;
-  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-  isInputCollapsed: boolean;
-  setIsInputCollapsed: (val: boolean) => void;
   logs: LogEntry[];
   chatInput: string;
   setChatInput: (val: string) => void;
@@ -112,15 +103,6 @@ interface KernViewProps {
 }
 
 export function KernView({
-  seedInput,
-  setSeedInput,
-  isAnalyzing,
-  handleAnalyze,
-  isFileLoading,
-  handleFileUpload,
-  fileInputRef,
-  isInputCollapsed,
-  setIsInputCollapsed,
   logs,
   chatInput,
   setChatInput,
@@ -184,88 +166,8 @@ export function KernView({
     >
       {/* Left Panel: Input & Status */}
       <section className="lg:w-1/3 bg-dark p-4 sm:p-5 border-r border-white/5 flex flex-col lg:overflow-y-auto lg:h-full">
-        <div className={cn("transition-all duration-500 overflow-hidden", isInputCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[500px] opacity-100 mb-6")}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold text-white tracking-tight">🌱 Seed-Eingabe</h2>
-            <span className="px-2 py-0.5 bg-primary/10 text-primary text-[9px] font-bold rounded-full uppercase tracking-wider">Input Mode</span>
-          </div>
-          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-            YouTube-Links, Chat-Texte oder flüchtige Gedanken – wirf alles in den Trichter.
-          </p>
-          
-          <div className="bg-panel/40 backdrop-blur-sm p-4 rounded-2xl border border-white/5 shadow-sm">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Neuer Seed</label>
-              <span className="text-[10px] text-slate-500 font-mono">{seedInput.length} chars</span>
-            </div>
-            <textarea 
-              value={seedInput}
-              onChange={(e) => setSeedInput(e.target.value)}
-              onKeyDown={(e) => e.ctrlKey && e.key === 'Enter' && handleAnalyze()}
-              rows={2} 
-              className="w-full bg-black/20 text-white p-3 rounded-xl border border-white/5 focus:border-primary/50 focus:ring-0 outline-none transition-all text-sm resize-none placeholder:text-slate-700" 
-              placeholder="Was beschäftigt dich gerade?"
-            />
-            
-            <div className="mt-4 flex items-center gap-3">
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isFileLoading || isAnalyzing}
-                className="p-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl border border-white/5 transition-all flex items-center justify-center flex-1 sm:flex-none"
-                title="Datei hochladen"
-              >
-                {isFileLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                ) : (
-                  <FileText className="w-4 h-4" />
-                )}
-                <span className="ml-2 text-[11px] font-bold uppercase tracking-wider sm:hidden">File</span>
-              </button>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileUpload} 
-                className="hidden" 
-                accept=".txt,.log"
-              />
-              <button 
-                onClick={handleAnalyze}
-                disabled={isAnalyzing || !seedInput.trim()}
-                className={cn(
-                  "flex-[2] sm:flex-1 bg-primary text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-primary/10 flex items-center justify-center active:scale-95",
-                  (isAnalyzing || !seedInput.trim()) && "opacity-50 cursor-not-allowed grayscale"
-                )}
-              >
-                {isAnalyzing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <span className="text-[11px] uppercase tracking-wider">Analysieren</span>
-                    <Zap className="w-3.5 h-3.5 ml-2" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Log & Chat Area */}
         <div className="flex-1 flex flex-col min-h-0 lg:overflow-hidden">
-          <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
-            <h3 className="text-[11px] font-bold text-slate-400 flex items-center uppercase tracking-wider">
-              <History className="w-3.5 h-3.5 mr-2 text-slate-500" /> Analysten-Log
-            </h3>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setIsInputCollapsed(!isInputCollapsed)}
-                className="flex items-center gap-1.5 text-[9px] font-bold text-primary/70 hover:text-primary uppercase tracking-widest px-2 py-1 bg-primary/5 hover:bg-primary/10 rounded-lg border border-primary/10 transition-all active:scale-95"
-                title={isInputCollapsed ? "Seed-Eingabe öffnen" : "Seed-Eingabe einklappen"}
-              >
-                {isInputCollapsed ? <Maximize2 className="w-3 h-3" /> : <Minimize2 className="w-3 h-3" />}
-                <span className="hidden xs:inline">{isInputCollapsed ? "Input" : "Hide"}</span>
-              </button>
-            </div>
-          </div>
 
           {/* Chat Area (Collapsible) */}
           <div className="flex-1 flex flex-col min-h-0">
@@ -282,39 +184,39 @@ export function KernView({
             </div>
 
             <div className={cn("flex-1 flex flex-col min-h-0 transition-all duration-500 overflow-hidden", isChatCollapsed ? "max-h-0 opacity-0" : "max-h-full opacity-100")}>
-              {/* Chat Messages */}
-              <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-3 min-h-[150px] lg:min-h-0">
-                <AnimatePresence initial={false}>
-                  {logs.filter(l => l.sender !== 'System').map((log) => (
-                    <motion.div 
-                      key={log.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "p-2.5 rounded-xl border transition-all backdrop-blur-md",
-                        log.sender === 'User' 
-                          ? "bg-white/5 border-white/5 text-slate-300 ml-4" 
-                          : "bg-primary/5 border-primary/20 text-slate-200 mr-4"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={cn(
-                          "text-[9px] font-bold uppercase tracking-wider",
-                          log.sender === 'User' ? "text-slate-500" : "text-primary"
-                        )}>
-                          {log.sender}
-                        </span>
-                        <span className="text-[8px] text-slate-600 font-mono">
-                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <div className="markdown-body text-xs">
-                        <ReactMarkdown>{log.text}</ReactMarkdown>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
+              {/* Chat Input */}
+              <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mb-3 pb-3 border-b border-white/5">
+                <div className="relative flex-1">
+                  <input 
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Frag deinen digitalen Zwilling..."
+                    disabled={isChatting}
+                    className="w-full bg-panel/40 border border-white/10 rounded-xl py-2 pl-3 pr-10 text-xs focus:border-primary/50 outline-none transition-all placeholder:text-slate-600"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isChatting || !chatInput.trim()}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
+                  >
+                    {isChatting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => handleChatSubmit(undefined, true)}
+                  disabled={isChatting || !chatInput.trim()}
+                  className="p-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl border border-accent/20 transition-all flex items-center justify-center group"
+                  title="Tiefe Antwort anfordern"
+                >
+                  <Zap className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                </button>
+              </form>
 
               {/* Selected Seeds Context */}
               {selectedSeeds.length > 0 && (
@@ -354,39 +256,39 @@ export function KernView({
                 </div>
               )}
 
-              {/* Chat Input */}
-              <form onSubmit={(e) => handleChatSubmit(e)} className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
-                <div className="relative flex-1">
-                  <input 
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Frag deinen digitalen Zwilling..."
-                    disabled={isChatting}
-                    className="w-full bg-panel/40 border border-white/10 rounded-xl py-2 pl-3 pr-10 text-xs focus:border-primary/50 outline-none transition-all placeholder:text-slate-600"
-                  />
-                  <button 
-                    type="submit"
-                    disabled={isChatting || !chatInput.trim()}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
-                  >
-                    {isChatting ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Send className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => handleChatSubmit(undefined, true)}
-                  disabled={isChatting || !chatInput.trim()}
-                  className="p-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl border border-accent/20 transition-all flex items-center justify-center group"
-                  title="Tiefe Antwort anfordern"
-                >
-                  <Zap className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                </button>
-              </form>
+              {/* Chat Messages */}
+              <div ref={chatLogRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide mb-3 min-h-[150px] lg:min-h-0">
+                <AnimatePresence initial={false}>
+                  {logs.filter(l => l.sender !== 'System').map((log) => (
+                    <motion.div 
+                      key={log.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={cn(
+                        "p-2.5 rounded-xl border transition-all backdrop-blur-md",
+                        log.sender === 'User' 
+                          ? "bg-white/5 border-white/5 text-slate-300 ml-4" 
+                          : "bg-primary/5 border-primary/20 text-slate-200 mr-4"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={cn(
+                          "text-[9px] font-bold uppercase tracking-wider",
+                          log.sender === 'User' ? "text-slate-500" : "text-primary"
+                        )}>
+                          {log.sender}
+                        </span>
+                        <span className="text-[8px] text-slate-600 font-mono">
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="markdown-body text-xs">
+                        <ReactMarkdown>{log.text}</ReactMarkdown>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
             </div>
 
             {isChatCollapsed && logs.filter(l => l.sender !== 'System').length > 0 && (

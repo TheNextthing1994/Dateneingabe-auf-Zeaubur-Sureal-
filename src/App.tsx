@@ -232,7 +232,6 @@ export default function App() {
     handleFileUpload
   } = useSeeds(showNotification, surrealStatus, setLogs);
 
-  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const chatLogRef = useRef<HTMLDivElement>(null);
@@ -2255,15 +2254,6 @@ export default function App() {
         <AnimatePresence mode="wait">
           {activeView === 'kern' && (
             <KernView 
-              isInputCollapsed={isInputCollapsed}
-              setIsInputCollapsed={setIsInputCollapsed}
-              seedInput={seedInput}
-              setSeedInput={setSeedInput}
-              handleAnalyze={handleAnalyze}
-              fileInputRef={fileInputRef}
-              isFileLoading={isFileLoading}
-              isAnalyzing={isAnalyzing}
-              handleFileUpload={handleFileUpload}
               logs={logs}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -2974,6 +2964,13 @@ export default function App() {
                 onSaveTranscript={handleSaveTranscript}
                 onSaveItem={handleLiveSaveItem}
                 onSaveWeeklyTask={handleLiveSaveWeeklyTask}
+                seedInput={seedInput}
+                setSeedInput={setSeedInput}
+                isAnalyzing={isAnalyzing}
+                handleAnalyze={handleAnalyze}
+                isFileLoading={isFileLoading}
+                handleFileUpload={handleFileUpload}
+                fileInputRef={fileInputRef}
                 onMessage={(sender, text) => {
                   const logId = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                   const newLog = {

@@ -14,7 +14,12 @@ import {
   Clock,
   X,
   Monitor,
-  MonitorOff
+  MonitorOff,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Send,
+  FileText
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
@@ -41,9 +46,30 @@ interface LiveModeProps {
   onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
   onSaveWeeklyTask?: (text: string) => Promise<void>;
   onMessage?: (sender: 'User' | 'D.T. Kern', text: string) => void;
+  seedInput: string;
+  setSeedInput: (val: string) => void;
+  isAnalyzing: boolean;
+  handleAnalyze: () => void;
+  isFileLoading: boolean;
+  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
 }
 
-export const LiveMode: React.FC<LiveModeProps> = ({ analyzedItems, onClose, onSaveTranscript, onSaveItem, onSaveWeeklyTask, onMessage }) => {
+export const LiveMode: React.FC<LiveModeProps> = ({ 
+  analyzedItems, 
+  onClose, 
+  onSaveTranscript, 
+  onSaveItem, 
+  onSaveWeeklyTask, 
+  onMessage,
+  seedInput,
+  setSeedInput,
+  isAnalyzing,
+  handleAnalyze,
+  isFileLoading,
+  handleFileUpload,
+  fileInputRef
+}) => {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
   const [isMuted, setIsMuted] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -782,6 +808,70 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             </div>
             
             <div className="flex flex-col gap-4 pt-4">
+              {/* Seed Input Section Moved from KernView */}
+              <div className="w-full text-left space-y-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">🌱 Seed-Eingabe</h2>
+                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase tracking-widest">Live Input</span>
+                </div>
+                
+                <div className="bg-white/[0.03] backdrop-blur-md p-4 rounded-[24px] border border-white/5 shadow-xl">
+                  <div className="relative">
+                    <textarea
+                      value={seedInput}
+                      onChange={(e) => setSeedInput(e.target.value)}
+                      placeholder="YouTube-Links, Gedanken oder Ideen hier reinwerfen..."
+                      className="w-full bg-transparent border-none text-white text-sm placeholder:text-slate-600 focus:ring-0 resize-none min-h-[100px] scrollbar-none"
+                    />
+                    
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          accept="video/*,audio/*,image/*,.pdf,.txt"
+                        />
+                        <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isFileLoading}
+                          className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all active:scale-95 disabled:opacity-50"
+                          title="Datei hochladen"
+                        >
+                          {isFileLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                        </button>
+                        <button 
+                          onClick={() => setSeedInput('')}
+                          className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all active:scale-95"
+                          title="Leeren"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      </div>
+                      
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={!seedInput.trim() || isAnalyzing}
+                        className={cn(
+                          "flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95",
+                          seedInput.trim() 
+                            ? "bg-primary text-dark shadow-lg shadow-primary/20" 
+                            : "bg-white/5 text-slate-600 cursor-not-allowed"
+                        )}
+                      >
+                        {isAnalyzing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        {isAnalyzing ? 'Analysiere...' : 'Seed Pflanzen'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <button 
                 disabled={isStarting}
                 onClick={startSession}
