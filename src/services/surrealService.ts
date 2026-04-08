@@ -499,18 +499,30 @@ class SurrealService {
           cleanId = cleanId.split(':')[1];
         }
         
-        // Ensure timestamp is a number
+        // Ensure timestamp is a number and handle SurrealDB explorer formatting
         let ts = item.timestamp;
-        if (typeof ts === 'string') {
-          ts = Number(ts.replace(/\./g, '')); // Remove dots if SurrealDB explorer added them
+        if (ts !== undefined && ts !== null) {
+          if (typeof ts === 'string') {
+            const cleanTs = ts.replace(/\./g, '');
+            ts = isNaN(Number(cleanTs)) ? ts : Number(cleanTs);
+          }
+        } else {
+          ts = Date.now();
         }
-        if (isNaN(Number(ts))) ts = Date.now();
         
+        // Ensure navigator_infographic exists
+        const infographic = item.navigator_infographic || {
+          headline: item.title || 'Kein Titel',
+          visual_summary: [],
+          punchline: ''
+        };
+
         return { 
           ...item, 
           id: cleanId, // Use clean ID for local state matching
           rawId: item.id?.toString(), // Keep full ID for DB operations
-          timestamp: Number(ts),
+          timestamp: typeof ts === 'number' ? ts : Date.now(),
+          navigator_infographic: infographic,
           supreme_decision: item.supreme_decision?.toString() || 'archive'
         };
       }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));

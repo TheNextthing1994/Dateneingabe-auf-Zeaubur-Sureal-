@@ -65,6 +65,7 @@ interface VaultViewProps {
   handleRestoreFromVault: (item: AnalyzedItem) => void;
   handleUpdateVault: (itemId: string, vaultId: string) => void;
   toggleSeedSelection: (seed: AnalyzedItem) => void;
+  onSyncDailyIntels?: () => Promise<void>;
   selectedSeeds: AnalyzedItem[];
   showNotification: (msg: string, type: 'success' | 'warn' | 'info') => void;
   knowledgePressure?: any;
@@ -101,6 +102,7 @@ export function VaultView({
   handleRestoreFromVault,
   handleUpdateVault,
   toggleSeedSelection,
+  onSyncDailyIntels,
   selectedSeeds,
   showNotification,
   knowledgePressure
@@ -555,21 +557,15 @@ export function VaultView({
                 </div>
                 <button 
                   onClick={() => {
-                    const demo: DailyIntel = {
-                      id: `demo_${Date.now()}`,
-                      url: 'https://youtube.com',
-                      title: 'Demo Intel: SurrealDB + Gemini 2.0',
-                      analyst_report: { core_points: ['Point 1', 'Point 2'], relevance_score: 9.5, goal_alignment: 'High' },
-                      supreme_decision: 'build',
-                      navigator_infographic: { headline: 'The Future of Agentic Workflows', visual_summary: ['Summary 1', 'Summary 2'], punchline: 'Build fast.' },
-                      chronicle_log: ['Log 1'],
-                      timestamp: Date.now()
-                    };
-                    setDailyIntels(prev => [demo, ...prev]);
+                    if (onSyncDailyIntels) {
+                      onSyncDailyIntels();
+                      showNotification("Synchronisiere Intel Feeds...", 'info');
+                    }
                   }}
-                  className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-[10px] font-black text-amber-500 uppercase tracking-widest transition-all"
+                  className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-[10px] font-black text-amber-500 uppercase tracking-widest transition-all flex items-center gap-2"
                 >
-                  Demo laden
+                  <RefreshCw className="w-3 h-3" />
+                  INTEL SYNCHRONISIEREN
                 </button>
               </div>
               

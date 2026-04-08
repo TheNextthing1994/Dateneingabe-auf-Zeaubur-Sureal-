@@ -46,8 +46,28 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
 
   const formatTimestamp = (ts: any) => {
     if (!ts) return 'Kein Datum';
-    const date = new Date(typeof ts === 'string' ? (isNaN(Number(ts)) ? ts : Number(ts)) : ts);
-    if (isNaN(date.getTime())) return 'Ungültiges Datum';
+    
+    let date: Date;
+    if (typeof ts === 'number') {
+      date = new Date(ts);
+    } else if (typeof ts === 'string') {
+      // Handle SurrealDB explorer dots
+      const cleanTs = ts.replace(/\./g, '');
+      const num = Number(cleanTs);
+      if (!isNaN(num)) {
+        date = new Date(num);
+      } else {
+        date = new Date(ts);
+      }
+    } else {
+      date = new Date(ts);
+    }
+
+    if (isNaN(date.getTime())) {
+      console.warn('IntelFeed: Invalid date for timestamp:', ts);
+      return 'Ungültiges Datum';
+    }
+    
     return `${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${date.toLocaleDateString()}`;
   };
 

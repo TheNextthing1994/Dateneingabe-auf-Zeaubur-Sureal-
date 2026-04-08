@@ -537,37 +537,43 @@ export default function App() {
     }
   };
 
+  const syncDailyIntels = async () => {
+    if (surrealStatus !== 'connected') return;
+    
+    try {
+      console.log('SurrealDB: Triggering Daily Intel sync...');
+      const items = await surrealService.getDailyIntels();
+      console.log('SurrealDB: Daily Intels from DB:', items);
+      
+      if (items && items.length > 0) {
+        setDailyIntels(prev => {
+          // Merge DB items with local items, prioritizing DB items by ID
+          const combined = [...items, ...prev];
+          const unique = combined.filter((item, index, self) => {
+            // Ensure we compare clean IDs
+            const currentId = item.id.includes(':') ? item.id.split(':')[1] : item.id;
+            const firstIndex = self.findIndex((t) => {
+              const targetId = t.id.includes(':') ? t.id.split(':')[1] : t.id;
+              return targetId === currentId;
+            });
+            return index === firstIndex;
+          });
+          
+          return unique.sort((a, b) => {
+            const tsA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+            const tsB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+            return tsB - tsA;
+          });
+        });
+      }
+    } catch (err) {
+      console.error('SurrealDB: Daily Intel sync failed:', err);
+    }
+  };
+
   useEffect(() => {
     if (surrealStatus === 'connected') {
-      console.log('SurrealDB connected, triggering Daily Intel sync...');
-      surrealService.getDailyIntels().then(items => {
-        console.log('SurrealDB: Daily Intels from DB:', items);
-        if (items && items.length > 0) {
-          setDailyIntels(prev => {
-            console.log('SurrealDB: Merging with previous state:', prev);
-            // Merge DB items with local items, prioritizing DB items by ID
-            const combined = [...items, ...prev];
-            const unique = combined.filter((item, index, self) => {
-              // Ensure we compare clean IDs
-              const currentId = item.id.includes(':') ? item.id.split(':')[1] : item.id;
-              const firstIndex = self.findIndex((t) => {
-                const targetId = t.id.includes(':') ? t.id.split(':')[1] : t.id;
-                return targetId === currentId;
-              });
-              return index === firstIndex;
-            });
-            const sorted = unique.sort((a, b) => {
-              const tsA = typeof a.timestamp === 'number' ? a.timestamp : 0;
-              const tsB = typeof b.timestamp === 'number' ? b.timestamp : 0;
-              return tsB - tsA;
-            });
-            console.log('SurrealDB: Final synced state:', sorted);
-            return sorted;
-          });
-        }
-      }).catch(err => {
-        console.error('SurrealDB: Sync failed:', err);
-      });
+      syncDailyIntels();
     }
   }, [surrealStatus]);
 
@@ -1654,17 +1660,7 @@ export default function App() {
         const storedMemoryConcepts = await surrealService.getMemoryConcepts();
         console.log('Stored memory concepts loaded from SurrealDB:', storedMemoryConcepts);
 
-        const storedDailyIntels = await surrealService.getDailyIntels();
-        if (storedDailyIntels && storedDailyIntels.length > 0) {
-          setDailyIntels(prev => {
-            const combined = [...storedDailyIntels, ...prev];
-            const unique = combined.filter((item, index, self) => {
-              const firstIndex = self.findIndex((t) => t.id === item.id);
-              return index === firstIndex;
-            });
-            return unique.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          });
-        }
+        await syncDailyIntels();
 
         if (storedMemoryConcepts && storedMemoryConcepts.length > 0) {
           setMemoryConcepts(prev => {
@@ -2352,6 +2348,7 @@ export default function App() {
             handleMakeMission={handleMakeMission}
             handleMoveToVault={handleMoveToVault}
             handleRestoreFromVault={handleRestoreFromVault}
+            onSyncDailyIntels={syncDailyIntels}
             handleUpdateVault={handleUpdateVault}
             toggleSeedSelection={toggleSeedSelection}
             selectedSeeds={selectedSeeds}
