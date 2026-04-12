@@ -100,13 +100,26 @@ ${(pinnedBlockerItems?.length || 0) > 0 ? pinnedBlockerItems.map(i => `  * [${i.
         NUTZER-ANFRAGE:
         ${text}`,
         config: {
+          tools: [{ googleSearch: {} }],
           systemInstruction: isDeep 
-            ? "Du bist D.T. Kern. Deine ABSOLUTE PRIORITÄT ist der Billboard-Status. 1. AKTIVE MISSION: Alles was du vorschlägst, muss diese Mission unterstützen oder zumindest nicht behindern. 2. BLOCKER: Wenn der Nutzer etwas verlangt, das einem Blocker auf dem Billboard widerspricht, musst du ihn SOFORT darauf hinweisen und die Anfrage ablehnen oder korrigieren (Reality Check). 3. INTEL: Beachte alle Einschränkungen (Zeit, Ressourcen) und den 'NÄCHSTEN SCHRITT' der gepinnten Intel. Wenn ein Intel einen nächsten Schritt hat, ist dies deine primäre Handlungsempfehlung. Antworte tiefgründig, analytisch und ohne Begrüßung. Nutze die 5 Säulen als Kompass."
-            : "Du bist D.T. Kern. Deine Beratung basiert ZUERST auf dem Billboard (Mission, Intel, Blocker). Wenn ein Pinned Intel existiert, ist dies dein primärer Fokus. Weise direkt auf Blocker hin. Antworte extrem kurz (max 2 Sätze). Sei präzise und direkt.",
+            ? "Du bist D.T. Kern. Deine ABSOLUTE PRIORITÄT ist der Billboard-Status. 1. AKTIVE MISSION: Alles was du vorschlägst, muss diese Mission unterstützen oder zumindest nicht behindern. 2. BLOCKER: Wenn der Nutzer etwas verlangt, das einem Blocker auf dem Billboard widerspricht, musst du ihn SOFORT darauf hinweisen und die Anfrage ablehnen oder korrigieren (Reality Check). 3. INTEL: Beachte alle Einschränkungen (Zeit, Ressourcen) und den 'NÄCHSTEN SCHRITT' der gepinnten Intel. Wenn ein Intel einen nächsten Schritt hat, ist dies deine primäre Handlungsempfehlung. Antworte tiefgründig, analytisch und ohne Begrüßung. Nutze die 5 Säulen als Kompass. NUTZE GOOGLE SEARCH für aktuelle Fakten oder wenn du Informationen außerhalb deiner Datenbank benötigst."
+            : "Du bist D.T. Kern. Deine Beratung basiert ZUERST auf dem Billboard (Mission, Intel, Blocker). Wenn ein Pinned Intel existiert, ist dies dein primärer Fokus. Weise direkt auf Blocker hin. Antworte extrem kurz (max 2 Sätze). Sei präzise und direkt. Nutze Google Search für aktuelle Informationen.",
         }
       });
 
-      const aiText = response.text || "Ich konnte keine Antwort generieren.";
+      let aiText = response.text || "Ich konnte keine Antwort generieren.";
+      
+      // Append grounding sources if available
+      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (groundingChunks && groundingChunks.length > 0) {
+        const sources = groundingChunks
+          .map(chunk => chunk.web ? `[${chunk.web.title}](${chunk.web.uri})` : null)
+          .filter(Boolean);
+        
+        if (sources.length > 0) {
+          aiText += "\n\n**Quellen:**\n" + sources.join("\n");
+        }
+      }
       
       const aiLog: LogEntry = {
         id: (Date.now() + 1).toString(),

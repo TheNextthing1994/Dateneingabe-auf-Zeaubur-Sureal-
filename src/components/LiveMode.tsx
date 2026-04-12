@@ -19,7 +19,13 @@ import {
   RotateCcw,
   Sparkles,
   Send,
-  FileText
+  FileText,
+  Search,
+  Activity as ActivityIcon,
+  ShieldAlert,
+  Timer,
+  Info,
+  Copy
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
@@ -55,6 +61,15 @@ interface LiveModeProps {
   fileInputRef: React.RefObject<HTMLInputElement>;
 }
 
+interface LiveLogEntry {
+  id: string;
+  timestamp: number;
+  level: 'info' | 'warning' | 'delay' | 'error';
+  message: string;
+  details?: string;
+  category: 'system' | 'search' | 'processing' | 'vault' | 'user';
+}
+
 export const LiveMode: React.FC<LiveModeProps> = ({ 
   analyzedItems, 
   onClose, 
@@ -80,6 +95,11 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
+  const [showMonitor, setShowMonitor] = useState(false);
+  const [processLogs, setProcessLogs] = useState<LiveLogEntry[]>([]);
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+  const [interruptionCount, setInterruptionCount] = useState(0);
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -122,10 +142,23 @@ export const LiveMode: React.FC<LiveModeProps> = ({
     return pcm16;
   };
 
+  const addProcessLog = (level: LiveLogEntry['level'], message: string, category: LiveLogEntry['category'] = 'system', details?: string) => {
+    const newLog: LiveLogEntry = {
+      id: Math.random().toString(36).substring(7),
+      timestamp: Date.now(),
+      level,
+      message,
+      category,
+      details
+    };
+    setProcessLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
   const startSession = async () => {
     setIsStarting(true);
     setStatus('connecting');
     setError(null);
+    addProcessLog('info', 'Initialisiere Live-Session...', 'system');
     
     // Set a timeout for connection
     const timeout = setTimeout(() => {
@@ -133,13 +166,52 @@ export const LiveMode: React.FC<LiveModeProps> = ({
         setError("Die Verbindung dauert länger als erwartet. Bitte versuchen Sie es erneut.");
         setStatus('error');
         setIsStarting(false);
+        addProcessLog('delay', 'Verbindungsaufbau verzögert sich...', 'system', 'Timeout nach 15s erreicht');
       }
     }, 15000);
     setConnectTimeout(timeout);
     
     try {
       const apiKey = getEnv('VITE_GEMINI_API_KEY');
-      if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+      if (!apiKey) {
+        addProcessLog('error', 'API Key fehlt!', 'system');
+        throw new Error("GEMINI_API_KEY missing");
+      }
+
+      // Check for YouTube URL in seedInput
+      const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/;
+      const match = seedInput.match(youtubeRegex);
+      let youtubeContext = "";
+      if (match) {
+        const logLine = `System: YouTube-Link erkannt. Rufe Transkript ab...`;
+        setTranscript(prev => [...prev.slice(-5), logLine]);
+        setFullTranscript(prev => [...prev, logLine]);
+        addProcessLog('info', 'YouTube-Link erkannt. Starte Transkript-Abruf...', 'processing', seedInput);
+        
+        const startTime = Date.now();
+        try {
+          const transcriptResponse = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(seedInput)}`);
+          const duration = Date.now() - startTime;
+          
+          if (duration > 5000) {
+            addProcessLog('delay', 'Transkript-Abruf dauerte länger als erwartet', 'processing', `${duration}ms`);
+          }
+
+          if (transcriptResponse.ok) {
+            const data = await transcriptResponse.json();
+            youtubeContext = `\n\n=== YOUTUBE VIDEO KONTEXT ===\nURL: ${seedInput}\nTRANSKRIPT:\n${data.transcript}\n==============================\n`;
+            const successLine = `System: Transkript erfolgreich geladen. D.T. Kern ist bereit.`;
+            setTranscript(prev => [...prev.slice(-5), successLine]);
+            setFullTranscript(prev => [...prev, successLine]);
+            addProcessLog('info', 'Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente verarbeitet`);
+          } else {
+            addProcessLog('warning', 'Transkript konnte nicht geladen werden', 'processing', 'Status: ' + transcriptResponse.status);
+          }
+        } catch (err) {
+          addProcessLog('error', 'Fehler beim Transkript-Abruf', 'processing', String(err));
+          console.error('Transcript fetch error in LiveMode:', err);
+        }
+      }
 
       const ai = new GoogleGenAI({ apiKey });
       
@@ -244,14 +316,31 @@ export const LiveMode: React.FC<LiveModeProps> = ({
         .map(i => `• ${i.text.slice(0, 80)} ${i.blockedBy ? '— Blockiert durch: ' + i.blockedBy : ''}`)
         .join('\n');
 
+      const austriaTime = new Intl.DateTimeFormat('de-AT', {
+        timeZone: 'Europe/Vienna',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(new Date());
+
+      const currentFocus = seedInput && !match ? `\n\n=== AKTUELLER FOKUS / NUTZER-INPUT ===\n${seedInput}\n====================================\n` : "";
+
       const systemInstruction = `Du bist D.T. Kern, der strategische digitale Zwilling des Nutzers.
 Der Nutzer hat ADHS und verliert oft den Fokus. Deine Aufgabe: ihn durch seine echten Projekte und Ideen führen, konkret und direkt.
 Antworte immer auf Deutsch. Halte Antworten kurz (max 20 Sekunden Sprechzeit).
 
-DEINE NEUE FÄHIGKEIT:
-Du kannst jetzt Erkenntnisse, Ideen oder Projekte DIREKT in den Vault (SurrealDB) speichern.
-Nutze dafür das Tool 'saveToVault', wenn der Nutzer dich darum bittet (z.B. "Kern, speichere das als Game Changer").
-Frage im Zweifel nach der Kategorie (GAME CHANGER, SOLID WORK, NOISE) oder der Säule (mindset, business, health, relationships, finances).
+AKTUELLER ZEITPUNKT (Österreich/Wien): ${austriaTime}
+
+${currentFocus}
+${youtubeContext}
+${youtubeContext ? "WICHTIG: Der Nutzer hat ein YouTube-Video geteilt. Das Transkript liegt oben vor. Analysiere es kurz im Kopf und sei bereit, spezifische Fragen dazu zu beantworten oder es in deine Beratung einzubeziehen." : ""}
+${seedInput && !match ? "WICHTIG: Der Nutzer hat einen spezifischen Fokus/Input gegeben. Beziehe dich darauf." : ""}
+
+DEINE NEUEN FÄHIGKEITEN:
+1. INTERNET-RECHERCHE: Du kannst jetzt das Internet in Echtzeit durchsuchen (Google Search), um aktuelle Informationen, Fakten oder Lösungen für den Nutzer zu finden. Nutze dies proaktiv, wenn der Nutzer Fragen zu aktuellen Ereignissen oder komplexen Themen hat, die über dein internes Wissen hinausgehen.
+2. VAULT-INTEGRATION: Du kannst Erkenntnisse, Ideen oder Projekte DIREKT in den Vault (SurrealDB) speichern. Nutze dafür das Tool 'saveToVault', wenn der Nutzer dich darum bittet.
+3. YOUTUBE-ANALYSE: Du kannst jetzt Transkripte von YouTube-Videos in Echtzeit abrufen und analysieren. Wenn der Nutzer einen Link erwähnt oder zeigt, nutze das Tool 'getYoutubeTranscript', um den Inhalt zu verstehen.
 
 VISUELLE WAHRNEHMUNG:
 Wenn der Nutzer seinen Bildschirm teilt, kannst du diesen sehen. Nutze die visuellen Informationen, um den Kontext besser zu verstehen und präzisere Ratschläge zu geben.
@@ -261,6 +350,7 @@ DEIN STIL:
 - Keine unnötigen Höflichkeitsfloskeln.
 - Denke in den 5 Säulen.
 - Erinnere den Nutzer an seine Mission und seine Blocker.
+- WICHTIG: Wenn der Nutzer dir sagt, dass du still sein sollst, die Klappe halten sollst oder ähnliches, antworte NUR mit "ok" oder "gut". Sei dabei ruhig etwas genervt oder kurz angebunden.
 
 === SEED DATENBANK (STAND JETZT) ===
 Gesamt: ${stats.total} Seeds | Diese Woche neu: ${stats.weekly} | Abgeschlossen: ${stats.completed}
@@ -289,6 +379,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
           responseModalities: [Modality.AUDIO],
           systemInstruction,
           tools: [
+            { googleSearch: {} },
             {
               functionDeclarations: [
                 {
@@ -316,6 +407,17 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                     },
                     required: ["text"]
                   }
+                },
+                {
+                  name: "getYoutubeTranscript",
+                  description: "Ruft das Transkript eines YouTube-Videos ab, um den Inhalt in Echtzeit zu analysieren.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      url: { type: Type.STRING, description: "Die vollständige URL des YouTube-Videos." }
+                    },
+                    required: ["url"]
+                  }
                 }
               ]
             }
@@ -334,6 +436,10 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             setIsStarting(false);
             isActiveRef.current = true;
             console.log("Live session opened");
+            addProcessLog('info', 'Verbindung zum Kern hergestellt', 'system');
+            
+            // Clear seed input
+            setSeedInput('');
             
             // Start screen capture loop if already sharing
             if (isScreenSharing && screenStreamRef.current) {
@@ -345,6 +451,8 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             if (message.toolCall) {
               const calls = message.toolCall.functionCalls;
               for (const call of calls) {
+                addProcessLog('info', `Tool-Aufruf: ${call.name}`, 'system', JSON.stringify(call.args));
+                
                 if (call.name === "saveToVault") {
                   const args = call.args as any;
                   if (onSaveItem) {
@@ -356,6 +464,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         pillarId: args.pillarId,
                         vaultId: args.vaultId || 'erkenntnisse'
                       });
+                      addProcessLog('info', 'Erfolgreich im Vault gespeichert', 'vault', args.text);
                       
                       // Send response back to model
                       session.sendToolResponse({
@@ -370,6 +479,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       setTranscript(prev => [...prev.slice(-5), line]);
                       setFullTranscript(prev => [...prev, line]);
                     } catch (err) {
+                      addProcessLog('error', 'Fehler beim Speichern im Vault', 'vault', String(err));
                       session.sendToolResponse({
                         functionResponses: [{
                           id: call.id,
@@ -386,6 +496,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   if (onSaveWeeklyTask) {
                     try {
                       await onSaveWeeklyTask(args.text);
+                      addProcessLog('info', 'Wochenaufgabe gespeichert', 'vault', args.text);
                       
                       // Send response back to model
                       session.sendToolResponse({
@@ -400,6 +511,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       setTranscript(prev => [...prev.slice(-5), line]);
                       setFullTranscript(prev => [...prev, line]);
                     } catch (err) {
+                      addProcessLog('error', 'Fehler beim Speichern der Wochenaufgabe', 'vault', String(err));
                       session.sendToolResponse({
                         functionResponses: [{
                           id: call.id,
@@ -408,6 +520,62 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         }]
                       });
                     }
+                  }
+                }
+
+                if (call.name === "getYoutubeTranscript") {
+                  const args = call.args as any;
+                  addProcessLog('info', 'Rufe YouTube-Transkript ab...', 'processing', args.url);
+                  
+                  try {
+                    const response = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(args.url)}`);
+                    if (response.ok) {
+                      const data = await response.json();
+                      
+                      if (!data.transcript || data.parts === 0) {
+                        addProcessLog('warning', 'YouTube-Video hat kein Transkript', 'processing', args.url);
+                        session.sendToolResponse({
+                          functionResponses: [{
+                            id: call.id,
+                            name: call.name,
+                            response: { 
+                              success: false, 
+                              message: "Dieses Video hat leider kein verfügbares Transkript (keine Untertitel). Ich kann den Inhalt daher nicht analysieren." 
+                            }
+                          }]
+                        });
+                        return;
+                      }
+
+                      addProcessLog('info', 'YouTube-Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente`);
+                      
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { 
+                            success: true, 
+                            transcript: data.transcript,
+                            message: "Transkript erfolgreich geladen. Du kannst es jetzt analysieren." 
+                          }
+                        }]
+                      });
+
+                      const line = `System: [YouTube] Transkript für ${args.url} geladen.`;
+                      setTranscript(prev => [...prev.slice(-5), line]);
+                      setFullTranscript(prev => [...prev, line]);
+                    } else {
+                      throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                  } catch (err) {
+                    addProcessLog('error', 'Fehler beim YouTube-Transkript-Abruf', 'processing', String(err));
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, message: "Fehler beim Abrufen des Transkripts. Möglicherweise hat das Video keine Untertitel oder ist privat." }
+                      }]
+                    });
                   }
                 }
               }
@@ -436,6 +604,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             // Handle user transcription
             const userTranscript = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
             if (userTranscript) {
+              addProcessLog('info', 'Nutzer-Eingabe verarbeitet', 'user', userTranscript);
               const line = `Du: ${userTranscript}`;
               setTranscript(prev => [...prev.slice(-5), line]);
               setFullTranscript(prev => [...prev, line]);
@@ -443,20 +612,24 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               
               // Proactive interruption: if user is speaking, stop model audio
               isInterruptedRef.current = true;
+              setInterruptionCount(prev => prev + 1);
               stopAllAudio();
             }
 
             if (message.serverContent?.interrupted) {
+              setInterruptionCount(prev => prev + 1);
               isInterruptedRef.current = true;
               stopAllAudio();
             }
           },
           onclose: () => {
             setStatus('idle');
+            addProcessLog('info', 'Session beendet', 'system');
             cleanup();
           },
           onerror: (err) => {
             console.error("Live error:", err);
+            addProcessLog('error', 'Kritischer Session-Fehler', 'system', String(err));
             setError("Verbindung verloren oder Fehler aufgetreten.");
             setStatus('error');
             isActiveRef.current = false;
@@ -694,6 +867,24 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     }
   };
 
+  const handleCopyHistory = async () => {
+    if (fullTranscript.length === 0) return;
+    setIsCopying(true);
+    const text = fullTranscript.map(line => {
+      const sender = line.startsWith('Du:') ? 'Nutzer' : line.includes('Vault') || line.includes('Wochenaufgabe') ? 'System (SurrealDB)' : 'D.T. Kern';
+      const content = line.replace(/^(Du:|Kern:|System:)\s*/, '');
+      return `[${sender}]: ${content}`;
+    }).join('\n\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setTimeout(() => setIsCopying(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      setIsCopying(false);
+    }
+  };
+
   useEffect(() => {
     return () => cleanup();
   }, []);
@@ -748,11 +939,14 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       </div>
 
       {/* System Log */}
-      <div className="absolute bottom-8 right-8 flex flex-col items-end gap-1 z-20 hidden md:flex">
-        <div className="flex items-center gap-2">
-          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">System Log</span>
-          <div className="w-1 h-1 rounded-full bg-primary/30" />
-        </div>
+      <div className="absolute bottom-8 right-8 flex flex-col items-end gap-1 z-20 flex">
+        <button 
+          onClick={() => setShowMonitor(true)}
+          className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all group"
+        >
+          <span className="text-[8px] font-black text-slate-600 group-hover:text-primary uppercase tracking-widest transition-colors">System Monitor</span>
+          <ActivityIcon className="w-3 h-3 text-primary/30 group-hover:text-primary transition-colors" />
+        </button>
         <div className="flex flex-col items-end gap-0.5">
           <span className="text-[9px] font-mono text-primary/30 uppercase">Core Sync: 98.4%</span>
           <span className="text-[9px] font-mono text-primary/30 uppercase">Neural Paths: Optimized</span>
@@ -963,6 +1157,19 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 <Clock className="w-6 h-6" />
               </button>
               <button 
+                onClick={() => setShowMonitor(true)}
+                className={cn(
+                  "p-4 rounded-full border transition-all flex items-center justify-center relative",
+                  showMonitor ? "bg-primary/20 border-primary text-primary" : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                )}
+                title="System Monitor anzeigen"
+              >
+                <ActivityIcon className="w-6 h-6" />
+                {processLogs.some(l => l.level === 'error' || l.level === 'warning') && (
+                  <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-black animate-pulse" />
+                )}
+              </button>
+              <button 
                 onClick={() => {
                   const newMuted = !isMuted;
                   setIsMuted(newMuted);
@@ -1023,6 +1230,124 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     </div>
 
     <AnimatePresence>
+        {showMonitor && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            className="absolute top-0 right-0 bottom-0 w-full sm:w-[400px] z-[130] bg-slate-950/95 backdrop-blur-2xl border-l border-white/10 flex flex-col"
+          >
+            <div className="p-6 border-b border-white/10">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/20 rounded-xl">
+                    <ActivityIcon className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">System Monitor</h3>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Live Process Log</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowMonitor(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input 
+                  type="text"
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  placeholder="Logs durchsuchen..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder:text-slate-600 focus:ring-1 focus:ring-primary/30 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-white/10">
+              {processLogs
+                .filter(log => 
+                  log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) || 
+                  log.details?.toLowerCase().includes(logSearchQuery.toLowerCase())
+                )
+                .map((log) => (
+                  <motion.div 
+                    key={log.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn(
+                      "p-3 rounded-xl border transition-all",
+                      log.level === 'info' && "bg-blue-500/5 border-blue-500/20 text-blue-400",
+                      log.level === 'warning' && "bg-orange-500/5 border-orange-500/20 text-orange-400",
+                      log.level === 'delay' && "bg-yellow-500/5 border-yellow-500/20 text-yellow-400",
+                      log.level === 'error' && "bg-red-500/5 border-red-500/20 text-red-400"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        {log.level === 'info' && <Info className="w-3 h-3" />}
+                        {log.level === 'warning' && <ShieldAlert className="w-3 h-3" />}
+                        {log.level === 'delay' && <Timer className="w-3 h-3" />}
+                        {log.level === 'error' && <ShieldAlert className="w-3 h-3" />}
+                        <span className="text-[10px] font-black uppercase tracking-widest">{log.category}</span>
+                      </div>
+                      <span className="text-[9px] font-mono opacity-40">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-bold mt-1.5 leading-relaxed">{log.message}</p>
+                    {log.details && (
+                      <p className="text-[9px] mt-1 opacity-60 font-mono break-all line-clamp-2 hover:line-clamp-none transition-all">
+                        {log.details}
+                      </p>
+                    )}
+                  </motion.div>
+                ))}
+              
+              {processLogs.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3 py-20">
+                  <ActivityIcon className="w-8 h-8 opacity-20" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Warte auf System-Aktivität...</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-white/[0.02] space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Status Legende</span>
+                {interruptionCount > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                    <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Unterbrechungen</span>
+                    <span className="text-[10px] font-mono font-black text-orange-400">x {interruptionCount}</span>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Normal</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                  <span className="text-[8px] font-black text-orange-400 uppercase tracking-widest">Hakt</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                  <span className="text-[8px] font-black text-yellow-400 uppercase tracking-widest">Verzögert</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">Kritisch</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {showHistory && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -1061,13 +1386,15 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         "p-4 rounded-2xl text-sm leading-relaxed border shadow-sm",
                         line.startsWith('Du:') 
                           ? "bg-primary/10 border-primary/20 text-primary/90 ml-12" 
-                          : "bg-white/5 border-white/5 text-slate-300 mr-12 italic"
+                          : line.includes('Vault') || line.includes('Wochenaufgabe')
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 mr-12 italic font-medium"
+                            : "bg-white/5 border-white/5 text-slate-300 mr-12 italic"
                       )}
                     >
                       <span className="text-[9px] font-black uppercase tracking-widest opacity-40 block mb-1">
-                        {line.startsWith('Du:') ? 'Nutzer' : 'D.T. Kern'}
+                        {line.startsWith('Du:') ? 'Nutzer' : line.includes('Vault') || line.includes('Wochenaufgabe') ? 'SurrealDB Sync' : 'D.T. Kern'}
                       </span>
-                      {line.replace(/^(Du:|Kern:)\s*/, '')}
+                      {line.replace(/^(Du:|Kern:|System:)\s*/, '')}
                     </motion.div>
                   ))
                 ) : (
@@ -1081,6 +1408,19 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               </div>
 
               <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={handleCopyHistory}
+                  disabled={fullTranscript.length === 0}
+                  className={cn(
+                    "px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 border",
+                    isCopying 
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                      : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  {isCopying ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {isCopying ? "Kopiert!" : "Text-Log Kopieren"}
+                </button>
                 <button 
                   onClick={handleSave}
                   disabled={fullTranscript.length === 0 || isSaving}

@@ -206,7 +206,11 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 
 export default function App() {
   const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video'>('kern');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get('url') || params.get('text');
+    return !(sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be')));
+  });
   const [showBriefing, setShowBriefing] = useState(false);
   const [shareData, setShareData] = useState<{ url: string; prompt: string; auto: boolean } | null>(null);
   
@@ -593,6 +597,10 @@ export default function App() {
       if (!processedUrls.current.has(sharedUrl)) {
         processIncomingIntel(sharedUrl, sharedTitle || undefined);
       }
+      
+      // Sofort zum Daily Intel navigieren
+      setActiveView('vault');
+      setLibraryTab('intel');
       
       // Clean up URL parameters
       window.history.replaceState({}, document.title, window.location.pathname);
