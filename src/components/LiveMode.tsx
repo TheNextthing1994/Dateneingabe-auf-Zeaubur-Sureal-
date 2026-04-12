@@ -106,6 +106,8 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [isLoadingIntel, setIsLoadingIntel] = useState(false);
+  const [liveChatInput, setLiveChatInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -124,6 +126,14 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const [volume, setVolume] = useState<number[]>(new Array(12).fill(10));
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  // Auto-expand textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [seedInput]);
 
   const stats = React.useMemo(() => {
     const now = Date.now();
@@ -890,6 +900,27 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     });
   };
 
+  const handleLiveChatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!liveChatInput.trim() || !sessionRef.current || status !== 'active') return;
+
+    const text = liveChatInput.trim();
+    
+    // Send to Gemini Live
+    sessionRef.current.sendRealtimeInput({
+      text: text
+    });
+
+    // Add to local logs
+    const line = `Du (Text): ${text}`;
+    setTranscript(prev => [...prev.slice(-5), line]);
+    setFullTranscript(prev => [...prev, line]);
+    if (onMessage) onMessage('User', text);
+    
+    addProcessLog('info', 'Text-Nachricht gesendet', 'user', text);
+    setLiveChatInput('');
+  };
+
   const handleSave = async () => {
     if (logs.length === 0) return;
     setIsSaving(true);
@@ -1000,13 +1031,6 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             <div className="absolute inset-0 bg-emerald-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
             <LiquidMetal isActive={status === 'active'} />
           </div>
-          
-          {/* Digital Twin Label */}
-          <div className="mt-4 mb-2">
-            <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.8em] ml-[0.8em]">
-              Digital Twin
-            </span>
-          </div>
         </div>
 
         {status === 'idle' && (
@@ -1015,44 +1039,50 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             animate={{ opacity: 1, y: 0 }}
             className="w-full space-y-8"
           >
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seeds Gesamt</p>
-                <p className="text-2xl font-bold text-white mb-1">{stats.total}</p>
-                <p className="text-[8px] text-slate-600 font-medium">↑ seit letzter Session</p>
+            <div className="grid grid-cols-2 gap-4 sm:gap-6">
+              <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-20 h-20 bg-white/5 blur-2xl rounded-full group-hover:bg-white/10 transition-all" />
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Seeds Gesamt</p>
+                <p className="text-3xl font-black text-white mb-1 tracking-tight">{stats.total}</p>
+                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">↑ seit letzter Session</p>
               </div>
-              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Neu (Woche)</p>
-                <p className="text-2xl font-bold text-emerald-400 mb-1">{stats.weekly}</p>
-                <p className="text-[8px] text-slate-600 font-medium">aktive Pipeline</p>
+              <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-20 h-20 bg-emerald-500/5 blur-2xl rounded-full group-hover:bg-emerald-500/10 transition-all" />
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Neu (Woche)</p>
+                <p className="text-3xl font-black text-emerald-400 mb-1 tracking-tight">{stats.weekly}</p>
+                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">aktive Pipeline</p>
               </div>
-              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">In Arbeit</p>
-                <p className="text-2xl font-bold text-blue-400 mb-1">{stats.inProgress}</p>
-                <p className="text-[8px] text-slate-600 font-medium">keine aktiven Seeds</p>
+              <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-20 h-20 bg-blue-500/5 blur-2xl rounded-full group-hover:bg-blue-500/10 transition-all" />
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">In Arbeit</p>
+                <p className="text-3xl font-black text-blue-400 mb-1 tracking-tight">{stats.inProgress}</p>
+                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">keine aktiven Seeds</p>
               </div>
-              <div className="bg-white/[0.03] p-4 sm:p-5 rounded-[24px] border border-white/5 text-left transition-all hover:bg-white/[0.05]">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unberührt</p>
-                <p className="text-2xl font-bold text-orange-400 mb-1">{stats.untouched}</p>
-                <p className="text-[8px] text-slate-600 font-medium">brauchen Aktivierung</p>
+              <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-20 h-20 bg-orange-500/5 blur-2xl rounded-full group-hover:bg-orange-500/10 transition-all" />
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Unberührt</p>
+                <p className="text-3xl font-black text-orange-400 mb-1 tracking-tight">{stats.untouched}</p>
+                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">brauchen Aktivierung</p>
               </div>
             </div>
             
-            <div className="flex flex-col gap-4 pt-4">
-              {/* Seed Input Section Moved from KernView */}
-              <div className="w-full text-left space-y-4 mb-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">🌱 Seed-Eingabe</h2>
-                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase tracking-widest">Live Input</span>
+            <div className="flex flex-col gap-6 pt-8">
+              {/* Seed Input Section */}
+              <div className="w-full space-y-6">
+                <div className="flex flex-col items-center gap-2">
+                  <h2 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-[0.3em] text-center">🌱 Seed-Eingabe</h2>
+                  <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-[0.2em] border border-primary/20">Live Input System</span>
                 </div>
                 
-                <div className="bg-white/[0.03] backdrop-blur-md p-4 rounded-[24px] border border-white/5 shadow-xl">
-                  <div className="relative">
+                <div className="bg-white/[0.02] backdrop-blur-2xl p-6 rounded-[32px] border border-white/10 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="relative z-10">
                     <textarea
+                      ref={textareaRef}
                       value={seedInput}
                       onChange={(e) => setSeedInput(e.target.value)}
                       placeholder="YouTube-Links, Gedanken oder Ideen hier reinwerfen..."
-                      className="w-full bg-transparent border-none text-white text-sm placeholder:text-slate-600 focus:ring-0 resize-none min-h-[100px] scrollbar-none"
+                      className="w-full bg-transparent border-none text-white text-sm placeholder:text-slate-600 focus:ring-0 resize-none min-h-[100px] max-h-[400px] overflow-y-auto scrollbar-none"
                     />
                     
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
@@ -1086,15 +1116,15 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                           onClick={handleLoadLatestIntel}
                           disabled={isLoadingIntel || dailyIntels.length === 0}
                           className={cn(
-                            "flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 border",
+                            "flex items-center gap-2 px-6 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all active:scale-95 border shadow-lg",
                             dailyIntels.length > 0
-                              ? "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20"
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20 hover:shadow-amber-500/10"
                               : "bg-white/5 border-white/10 text-slate-600 cursor-not-allowed"
                           )}
                           title="Letzten Daily Intel (Volltext) laden"
                         >
-                          {isLoadingIntel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                          Intel
+                          {isLoadingIntel ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                          Intel laden
                         </button>
 
                         <button
@@ -1439,6 +1469,32 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   <X className="w-6 h-6" />
                 </button>
               </div>
+
+              {/* Live Chat Input within History */}
+              {status === 'active' && (
+                <form onSubmit={handleLiveChatSubmit} className="mb-8 relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+                  <div className="relative flex items-center gap-3 bg-white/[0.03] border border-white/10 rounded-2xl p-2 pl-4 focus-within:border-primary/40 transition-all">
+                    <input 
+                      type="text"
+                      value={liveChatInput}
+                      onChange={(e) => setLiveChatInput(e.target.value)}
+                      placeholder="Schreibe dem Live Agent (Links, Namen, Korrekturen)..."
+                      className="flex-1 bg-transparent border-none text-white text-sm placeholder:text-slate-600 focus:ring-0 py-2"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={!liveChatInput.trim()}
+                      className="p-2.5 bg-primary text-dark rounded-xl hover:bg-primary/90 transition-all disabled:opacity-30 disabled:grayscale"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[9px] text-slate-500 font-bold uppercase tracking-widest px-1">
+                    Der Agent liest deine Nachricht sofort mit
+                  </p>
+                </form>
+              )}
 
               <div className="flex-1 overflow-y-auto space-y-4 pr-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                 {logs.length > 0 ? (

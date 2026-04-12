@@ -1,7 +1,10 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import { YoutubeTranscript } from 'youtube-transcript';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { YoutubeTranscript } = require('youtube-transcript');
 
 async function startServer() {
   console.log('Starting D.T. Kern Server...');
@@ -32,7 +35,7 @@ async function startServer() {
       
       // Try to fetch transcript
       const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-      const fullText = transcript.map(part => part.text).join(' ');
+      const fullText = transcript.map((part: any) => part.text).join(' ');
       
       console.log(`[API] Successfully fetched transcript for ${videoId} (${transcript.length} parts)`);
       res.json({ 
