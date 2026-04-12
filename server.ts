@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 async function startServer() {
   console.log('Starting D.T. Kern Server...');
@@ -10,6 +11,7 @@ async function startServer() {
   // API Routes
   app.get('/api/youtube/transcript', async (req, res) => {
     const videoUrl = req.query.url as string;
+    console.log(`[API] Received transcript request for: ${videoUrl}`);
     
     if (!videoUrl) {
       return res.status(400).json({ error: 'Missing YouTube URL' });
@@ -26,13 +28,13 @@ async function startServer() {
     }
 
     try {
-      console.log(`Fetching transcript for Video ID: ${videoId}`);
-      const { YoutubeTranscript } = await import('youtube-transcript/dist/youtube-transcript.esm.js');
+      console.log(`[API] Fetching transcript for Video ID: ${videoId}`);
       
       // Try to fetch transcript
       const transcript = await YoutubeTranscript.fetchTranscript(videoId);
       const fullText = transcript.map(part => part.text).join(' ');
       
+      console.log(`[API] Successfully fetched transcript for ${videoId} (${transcript.length} parts)`);
       res.json({ 
         transcript: fullText,
         parts: transcript.length,
@@ -41,11 +43,11 @@ async function startServer() {
       });
     } catch (error: any) {
       const errorMessage = error.message || String(error);
-      console.warn(`Transcript fetch failed for ${videoId}:`, errorMessage);
+      console.warn(`[API] Transcript fetch failed for ${videoId}:`, errorMessage);
       
       // Fallback: Try to get metadata (Title/Description)
       try {
-        console.log("Transkript deaktiviert. Versuche Metadaten-Extraktion...");
+        console.log("[API] Transkript deaktiviert. Versuche Metadaten-Extraktion...");
         const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -70,6 +72,7 @@ async function startServer() {
 
         const reason = errorMessage.includes('disabled') ? 'deaktiviert' : 'nicht verfügbar';
 
+        console.log(`[API] Metadata fallback successful for ${videoId}`);
         return res.json({ 
           transcript: `TITEL: ${title}\n\nBESCHREIBUNG: ${description}\n\n[HINWEIS: Das Transkript ist für dieses Video ${reason}. Nutze diese Metadaten für die Analyse.]`,
           parts: 0,
@@ -79,6 +82,7 @@ async function startServer() {
           source: 'metadata'
         });
       } catch (fallbackErr) {
+        console.error(`[API] All fetch attempts failed for ${videoId}:`, fallbackErr);
         res.status(500).json({ 
           error: 'Failed to fetch any data from YouTube', 
           details: errorMessage,

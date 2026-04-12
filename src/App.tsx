@@ -3058,6 +3058,8 @@ export default function App() {
             {activeView === 'live' && (
               <LiveMode 
                 analyzedItems={analyzedItems} 
+                dailyIntels={dailyIntels}
+                logs={logs}
                 onClose={() => {
                   setActiveView('kern');
                 }} 

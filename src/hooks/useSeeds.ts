@@ -60,7 +60,9 @@ export function useSeeds(
 
       try {
         const transcriptResponse = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(text)}`);
-        if (transcriptResponse.ok) {
+        const contentType = transcriptResponse.headers.get("content-type");
+        
+        if (transcriptResponse.ok && contentType && contentType.includes("application/json")) {
           const data = await transcriptResponse.json();
           contentToAnalyze = `YouTube Video Transkript: ${data.transcript}`;
           setLogs(prev => [...prev, {
@@ -70,16 +72,29 @@ export function useSeeds(
             timestamp: Date.now()
           }]);
         } else {
-          console.warn('Failed to fetch transcript, falling back to URL analysis');
+          const errorText = await transcriptResponse.text();
+          console.warn('Failed to fetch transcript, falling back to URL analysis. Response:', errorText.substring(0, 100));
+          
+          let errorMsg = 'Transkript-Abruf fehlgeschlagen (Video hat evtl. keine Untertitel). Analysiere nur den Link...';
+          if (errorText.includes('<!DOCTYPE html>')) {
+            errorMsg = 'System-Fehler beim Transkript-Abruf (Server lieferte HTML statt JSON). Analysiere nur den Link...';
+          }
+
           setLogs(prev => [...prev, {
             id: (Date.now() + 2).toString(),
             sender: 'System',
-            text: 'Transkript-Abruf fehlgeschlagen (Video hat evtl. keine Untertitel). Analysiere nur den Link...',
+            text: errorMsg,
             timestamp: Date.now()
           }]);
         }
       } catch (err) {
         console.error('Transcript fetch error:', err);
+        setLogs(prev => [...prev, {
+          id: (Date.now() + 2).toString(),
+          sender: 'System',
+          text: 'Netzwerk-Fehler beim Transkript-Abruf. Analysiere nur den Link...',
+          timestamp: Date.now()
+        }]);
       }
     }
 

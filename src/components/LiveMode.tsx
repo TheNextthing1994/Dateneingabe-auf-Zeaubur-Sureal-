@@ -31,6 +31,7 @@ import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@
 import { getEnv } from '../env';
 import { cn } from '../lib/utils';
 import { LiquidMetal } from './LiquidMetal';
+import { LogEntry, DailyIntel } from '../types';
 
 interface AnalyzedItem {
   id: string;
@@ -47,11 +48,13 @@ interface AnalyzedItem {
 
 interface LiveModeProps {
   analyzedItems: AnalyzedItem[];
+  dailyIntels?: DailyIntel[];
+  logs: LogEntry[];
   onClose: (transcript?: string[]) => void;
   onSaveTranscript: (transcript: string[]) => void;
   onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
   onSaveWeeklyTask?: (text: string) => Promise<void>;
-  onMessage?: (sender: 'User' | 'D.T. Kern', text: string) => void;
+  onMessage?: (sender: 'User' | 'D.T. Kern' | 'System' | 'D.T. Kern (Strategie)', text: string) => void;
   seedInput: string;
   setSeedInput: (val: string) => void;
   isAnalyzing: boolean;
@@ -72,6 +75,8 @@ interface LiveLogEntry {
 
 export const LiveMode: React.FC<LiveModeProps> = ({ 
   analyzedItems, 
+  dailyIntels = [],
+  logs,
   onClose, 
   onSaveTranscript, 
   onSaveItem, 
@@ -100,6 +105,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [processLogs, setProcessLogs] = useState<LiveLogEntry[]>([]);
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [interruptionCount, setInterruptionCount] = useState(0);
+  const [isLoadingIntel, setIsLoadingIntel] = useState(false);
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -140,6 +146,30 @@ export const LiveMode: React.FC<LiveModeProps> = ({
       pcm16[i] = Math.max(-32768, Math.min(32767, float32Array[i] * 32768));
     }
     return pcm16;
+  };
+
+  const handleLoadLatestIntel = () => {
+    if (!dailyIntels || dailyIntels.length === 0) {
+      addProcessLog('warning', 'Kein Daily Intel vorhanden', 'system');
+      return;
+    }
+
+    setIsLoadingIntel(true);
+    const latest = dailyIntels[0];
+    const transcript = latest.chronicle_log?.join('\n') || 'Kein Transkript verfügbar.';
+    
+    // Add to seed input or directly to context if session is active?
+    // User said "reinladen können als kontext", similar to "Seed Pflanzen".
+    // I'll append it to seedInput so the user can see it and then "plant" it, 
+    // or maybe just trigger handleAnalyze with it.
+    // Actually, the user said "neben den seed einpflanzen button noch ein button", 
+    // implying it's a separate action.
+    
+    const intelContext = `\n\n=== DAILY INTEL KONTEXT: ${latest.title} ===\n${transcript}\n==============================\n`;
+    setSeedInput(seedInput + intelContext);
+    
+    addProcessLog('info', 'Daily Intel Transkript geladen', 'processing', latest.title);
+    setIsLoadingIntel(false);
   };
 
   const addProcessLog = (level: LiveLogEntry['level'], message: string, category: LiveLogEntry['category'] = 'system', details?: string) => {
@@ -186,6 +216,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
         const logLine = `System: YouTube-Link erkannt. Rufe Transkript ab...`;
         setTranscript(prev => [...prev.slice(-5), logLine]);
         setFullTranscript(prev => [...prev, logLine]);
+        if (onMessage) onMessage('System', 'YouTube-Link erkannt. Rufe Transkript ab...');
         addProcessLog('info', 'YouTube-Link erkannt. Starte Transkript-Abruf...', 'processing', seedInput);
         
         const startTime = Date.now();
@@ -203,6 +234,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
             const successLine = `System: Transkript erfolgreich geladen. D.T. Kern ist bereit.`;
             setTranscript(prev => [...prev.slice(-5), successLine]);
             setFullTranscript(prev => [...prev, successLine]);
+            if (onMessage) onMessage('System', 'Transkript erfolgreich geladen. D.T. Kern ist bereit.');
             addProcessLog('info', 'Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente verarbeitet`);
           } else {
             addProcessLog('warning', 'Transkript konnte nicht geladen werden', 'processing', 'Status: ' + transcriptResponse.status);
@@ -478,6 +510,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       const line = `System: [Tool] ${args.text} wurde im Vault gespeichert.`;
                       setTranscript(prev => [...prev.slice(-5), line]);
                       setFullTranscript(prev => [...prev, line]);
+                      if (onMessage) onMessage('System', `[Tool] ${args.text} wurde im Vault gespeichert.`);
                     } catch (err) {
                       addProcessLog('error', 'Fehler beim Speichern im Vault', 'vault', String(err));
                       session.sendToolResponse({
@@ -510,6 +543,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       const line = `System: [Wochenaufgabe] ${args.text} wurde gespeichert.`;
                       setTranscript(prev => [...prev.slice(-5), line]);
                       setFullTranscript(prev => [...prev, line]);
+                      if (onMessage) onMessage('System', `[Wochenaufgabe] ${args.text} wurde gespeichert.`);
                     } catch (err) {
                       addProcessLog('error', 'Fehler beim Speichern der Wochenaufgabe', 'vault', String(err));
                       session.sendToolResponse({
@@ -529,10 +563,12 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   
                   try {
                     const response = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(args.url)}`);
-                    if (response.ok) {
+                    const contentType = response.headers.get("content-type");
+                    
+                    if (response.ok && contentType && contentType.includes("application/json")) {
                       const data = await response.json();
                       
-                      if (!data.transcript || data.parts === 0) {
+                      if (!data.transcript || (data.parts === 0 && !data.isMetadataOnly)) {
                         addProcessLog('warning', 'YouTube-Video hat kein Transkript', 'processing', args.url);
                         session.sendToolResponse({
                           functionResponses: [{
@@ -547,7 +583,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         return;
                       }
 
-                      addProcessLog('info', 'YouTube-Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente`);
+                      addProcessLog('info', 'YouTube-Daten erfolgreich geladen', 'processing', data.isMetadataOnly ? 'Metadaten' : `${data.parts} Segmente`);
                       
                       session.sendToolResponse({
                         functionResponses: [{
@@ -564,6 +600,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       const line = `System: [YouTube] Transkript für ${args.url} geladen.`;
                       setTranscript(prev => [...prev.slice(-5), line]);
                       setFullTranscript(prev => [...prev, line]);
+                      if (onMessage) onMessage('System', `[YouTube] Transkript für ${args.url} geladen.`);
                     } else {
                       throw new Error(`HTTP error! status: ${response.status}`);
                     }
@@ -854,10 +891,11 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
   };
 
   const handleSave = async () => {
-    if (fullTranscript.length === 0) return;
+    if (logs.length === 0) return;
     setIsSaving(true);
     try {
-      await onSaveTranscript(fullTranscript);
+      const transcriptToSave = logs.map(log => `${log.sender}: ${log.text}`);
+      await onSaveTranscript(transcriptToSave);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -868,12 +906,11 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
   };
 
   const handleCopyHistory = async () => {
-    if (fullTranscript.length === 0) return;
+    if (logs.length === 0) return;
     setIsCopying(true);
-    const text = fullTranscript.map(line => {
-      const sender = line.startsWith('Du:') ? 'Nutzer' : line.includes('Vault') || line.includes('Wochenaufgabe') ? 'System (SurrealDB)' : 'D.T. Kern';
-      const content = line.replace(/^(Du:|Kern:|System:)\s*/, '');
-      return `[${sender}]: ${content}`;
+    const text = logs.map(log => {
+      const time = new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `[${time}] ${log.sender}: ${log.text}`;
     }).join('\n\n');
 
     try {
@@ -1044,29 +1081,58 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         </button>
                       </div>
                       
-                      <button
-                        onClick={handleAnalyze}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleLoadLatestIntel}
+                          disabled={isLoadingIntel || dailyIntels.length === 0}
+                          className={cn(
+                            "flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 border",
+                            dailyIntels.length > 0
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20"
+                              : "bg-white/5 border-white/10 text-slate-600 cursor-not-allowed"
+                          )}
+                          title="Letzten Daily Intel (Volltext) laden"
+                        >
+                          {isLoadingIntel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                          Intel
+                        </button>
+
+                        <button
+                          onClick={handleAnalyze}
                         disabled={!seedInput.trim() || isAnalyzing}
                         className={cn(
-                          "flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95",
+                          "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all active:scale-95 relative overflow-hidden group",
                           seedInput.trim() 
-                            ? "bg-primary text-dark shadow-lg shadow-primary/20" 
+                            ? "bg-primary text-dark shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-[1.02]" 
                             : "bg-white/5 text-slate-600 cursor-not-allowed"
                         )}
                       >
-                        {isAnalyzing ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4" />
+                        {/* Animated background for active button */}
+                        {seedInput.trim() && !isAnalyzing && (
+                          <motion.div 
+                            initial={{ x: '-100%' }}
+                            animate={{ x: '100%' }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
+                          />
                         )}
-                        {isAnalyzing ? 'Analysiere...' : 'Seed Pflanzen'}
+                        
+                        <div className="relative z-10 flex items-center gap-2">
+                          {isAnalyzing ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                          )}
+                          {isAnalyzing ? 'Analysiere...' : 'Seed Pflanzen'}
+                        </div>
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <button 
+            <button 
                 disabled={isStarting}
                 onClick={startSession}
                 className="w-full bg-white/[0.02] text-white font-bold py-5 rounded-2xl text-xs sm:text-sm uppercase tracking-[0.4em] border border-white/10 hover:bg-white/5 active:scale-95 transition-all disabled:opacity-50"
@@ -1375,26 +1441,35 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-4 pr-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                {fullTranscript.length > 0 ? (
-                  fullTranscript.map((line, i) => (
+                {logs.length > 0 ? (
+                  logs.map((log, i) => (
                     <motion.div 
-                      key={i} 
-                      initial={{ opacity: 0, x: line.startsWith('Du:') ? 20 : -20 }}
+                      key={log.id || i} 
+                      initial={{ opacity: 0, x: log.sender === 'User' ? 20 : -20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
+                      transition={{ delay: i * 0.02 }}
                       className={cn(
                         "p-4 rounded-2xl text-sm leading-relaxed border shadow-sm",
-                        line.startsWith('Du:') 
+                        log.sender === 'User' 
                           ? "bg-primary/10 border-primary/20 text-primary/90 ml-12" 
-                          : line.includes('Vault') || line.includes('Wochenaufgabe')
+                          : log.sender === 'System'
                             ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 mr-12 italic font-medium"
                             : "bg-white/5 border-white/5 text-slate-300 mr-12 italic"
                       )}
                     >
-                      <span className="text-[9px] font-black uppercase tracking-widest opacity-40 block mb-1">
-                        {line.startsWith('Du:') ? 'Nutzer' : line.includes('Vault') || line.includes('Wochenaufgabe') ? 'SurrealDB Sync' : 'D.T. Kern'}
-                      </span>
-                      {line.replace(/^(Du:|Kern:|System:)\s*/, '')}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[9px] font-black uppercase tracking-widest opacity-40">
+                          {log.sender === 'User' ? 'Nutzer' : log.sender === 'System' ? 'System Sync' : 'D.T. Kern'}
+                        </span>
+                        <span className="text-[8px] font-mono opacity-30">
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className={cn(
+                        log.sender === 'System' ? 'text-emerald-400/90' : 'text-slate-300'
+                      )}>
+                        {log.text}
+                      </p>
                     </motion.div>
                   ))
                 ) : (
@@ -1410,7 +1485,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row gap-4">
                 <button 
                   onClick={handleCopyHistory}
-                  disabled={fullTranscript.length === 0}
+                  disabled={logs.length === 0}
                   className={cn(
                     "px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 border",
                     isCopying 
@@ -1423,7 +1498,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 </button>
                 <button 
                   onClick={handleSave}
-                  disabled={fullTranscript.length === 0 || isSaving}
+                  disabled={logs.length === 0 || isSaving}
                   className={cn(
                     "flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-lg",
                     saveSuccess 
