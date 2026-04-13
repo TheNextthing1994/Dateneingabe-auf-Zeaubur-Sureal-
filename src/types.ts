@@ -79,6 +79,12 @@ export interface DailyIntel {
     punchline: string;
   };
   chronicle_log: string[];
+  research_armada?: {
+    analyst_findings: string;
+    scout_research: string;
+    architect_integration: string;
+    reviewer_critique: string;
+  };
 }
 
 export interface BillboardItem {

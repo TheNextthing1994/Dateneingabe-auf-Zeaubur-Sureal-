@@ -12,7 +12,13 @@ import {
   ShieldCheck, 
   Hammer, 
   History,
-  TrendingUp
+  TrendingUp,
+  Shield,
+  Search as SearchIcon,
+  Compass,
+  Eye,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { DailyIntel } from '../types';
@@ -25,6 +31,8 @@ interface IntelFeedProps {
 }
 
 export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateStatus, onAddDemo }) => {
+  const [expandedArmada, setExpandedArmada] = React.useState<string | null>(null);
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
@@ -108,6 +116,12 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                     </div>
                   </div>
                 <div className="flex items-center gap-2">
+                  {item.research_armada && (
+                    <div className="px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-primary" />
+                      <span className="text-[9px] font-black text-primary uppercase tracking-widest">Armada Ready</span>
+                    </div>
+                  )}
                   {item.additional_urls && item.additional_urls.length > 0 && (
                     <div className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-1.5">
                       <TrendingUp className="w-3 h-3 text-amber-500" />
@@ -188,6 +202,78 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                       {(item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? 'BUILD MODE' : 'ARCHIVED'}
                     </div>
                   </div>
+
+                  {/* Research Armada Section */}
+                  {item.research_armada && (
+                    <div className="space-y-4">
+                      <button 
+                        onClick={() => setExpandedArmada(expandedArmada === item.id ? null : item.id)}
+                        className="w-full flex items-center justify-between p-4 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                            <Shield className="w-4 h-4 text-primary" />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-[10px] font-black text-primary uppercase tracking-widest">Research Armada</div>
+                            <div className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Multi-Agent Deep Dive</div>
+                          </div>
+                        </div>
+                        {expandedArmada === item.id ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500 group-hover:text-primary transition-colors" />}
+                      </button>
+
+                      <AnimatePresence>
+                        {expandedArmada === item.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden space-y-4"
+                          >
+                            {/* Analyst Findings */}
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                <ShieldCheck className="w-3 h-3" /> Analyst Findings
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-relaxed italic">
+                                {item.research_armada.analyst_findings}
+                              </p>
+                            </div>
+
+                            {/* Scout Research */}
+                            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-[9px] font-black text-blue-400 uppercase tracking-widest">
+                                <SearchIcon className="w-3 h-3" /> Scout Research (Web)
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-relaxed">
+                                {item.research_armada.scout_research}
+                              </p>
+                            </div>
+
+                            {/* Architect Integration */}
+                            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-[9px] font-black text-emerald-400 uppercase tracking-widest">
+                                <Compass className="w-3 h-3" /> Architect Integration
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-relaxed font-bold">
+                                {item.research_armada.architect_integration}
+                              </p>
+                            </div>
+
+                            {/* Reviewer Critique */}
+                            <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-[9px] font-black text-purple-400 uppercase tracking-widest">
+                                <Eye className="w-3 h-3" /> Reviewer Critique
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                {item.research_armada.reviewer_critique}
+                              </p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
 
                   {/* Builder Plan (If applicable) */}
                   {item.builder_plan && (

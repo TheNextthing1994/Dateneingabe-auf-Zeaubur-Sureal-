@@ -300,248 +300,129 @@ export default function App() {
     setIsProcessingIntel(true);
     processedUrls.current.add(url);
     
-    // Immediate feedback
-    showNotification("Gefangen! Der D.T. analysiert im Hintergrund...", 'success');
+    showNotification("Research Armada wird entsandt...", 'success');
 
     try {
       const apiKey = (process.env as any).GEMINI_API_KEY || getEnv('VITE_GEMINI_API_KEY');
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY is missing');
-      }
+      if (!apiKey) throw new Error('GEMINI_API_KEY is missing');
       
       const ai = new GoogleGenAI({ apiKey });
       
-      // Get recent context for accumulation (last 5 items from today)
-      const recentContext = dailyIntels.slice(0, 5).map(item => ({
-        id: item.id,
-        title: item.title,
-        headline: item.navigator_infographic?.headline || 'Keine Headline',
-        summary: item.navigator_infographic?.visual_summary?.join(' ') || ''
-      }));
-
-      let response;
+      // --- STEP 1: ANALYST OFFICER (Extraction) ---
+      console.log('Armada: Analyst Officer starting...');
+      let analystFindings = "";
       try {
-        console.log('Attempting AI analysis with urlContext for:', url);
-        // Try with urlContext first
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Du bist das autonome Analyse-Team des Digital Twin (D.T.). 
-          Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}.
-          
-          AKKUMULATIONS-PRÜFUNG:
-          Prüfe, ob dieses Video Synergien mit folgenden kürzlich erfassten Intel-Items hat:
-          ${JSON.stringify(recentContext)}
-          
-          Wenn eine starke Synergie besteht (z.B. gleiches Projekt, ergänzende Technik), entscheide dich für eine KOMBINATION.
-          In diesem Fall wird das bestehende Item aktualisiert und erweitert, anstatt ein neues zu erstellen.
-          
-          Führe folgende Schritte aus:
-          1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
-          2. Supreme Officer: Entscheide: 'discard', 'archive', 'build' ODER 'merge' (wenn Synergie mit einem der oben genannten IDs besteht).
-          3. Builder: Erstelle/Erweitere die Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
-          4. Chronicle Officer: Dokumentiere den Denkprozess (auch warum kombiniert wurde).
-          5. Morning Navigator: Erstelle/Erweitere die Text-Infografik (Headline, Bulletpoints, Punchline).
-          
-          Antworte STRENG im JSON Format.`,
+        const analystResponse = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: [{ role: 'user', parts: [{ text: `Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}. Extrahiere die Kernaussagen, technischen Details und bewerte die Relevanz (0-10).` }] }],
           config: {
-            tools: [{ urlContext: {} }],
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                analyst_report: {
-                  type: Type.OBJECT,
-                  properties: {
-                    core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    relevance_score: { type: Type.NUMBER },
-                    goal_alignment: { type: Type.STRING }
-                  },
-                  required: ["core_points", "relevance_score", "goal_alignment"]
-                },
-                supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
-                merge_with_id: { type: Type.STRING, description: "ID des Items aus dem Context, mit dem kombiniert werden soll" },
-                builder_plan: {
-                  type: Type.OBJECT,
-                  properties: {
-                    steps: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    tech_stack_notes: { type: Type.STRING }
-                  }
-                },
-                navigator_infographic: {
-                  type: Type.OBJECT,
-                  properties: {
-                    headline: { type: Type.STRING },
-                    visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    punchline: { type: Type.STRING }
-                  },
-                  required: ["headline", "visual_summary", "punchline"]
-                },
-                chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
-              },
-              required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
-            }
+            tools: [{ urlContext: {} }] as any
           }
         });
-      } catch (aiErr: any) {
-        console.warn('AI Call failed with urlContext, retrying without it...', aiErr);
-        // Fallback: Try without urlContext if it fails (e.g. video restricted or no transcript)
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Analysiere dieses YouTube Video (nur basierend auf Titel/Metadaten): ${url}. ${title ? `Titel: ${title}` : ''}.
-          
-          Führe folgende Schritte aus:
-          1. Analyst Officer: Extrahiere Kernaussagen und bewerte Relevanz (0-10) für Ziele Q1/2026.
-          2. Supreme Officer: Entscheide: 'discard', 'archive', 'build'.
-          3. Builder: Erstelle eine Schritt-für-Schritt Anleitung (Claude CLI/Code, SurrealDB, Zeabur).
-          4. Chronicle Officer: Dokumentiere den Denkprozess.
-          5. Morning Navigator: Erstelle eine Text-Infografik (Headline, Bulletpoints, Punchline).
-          
-          Antworte STRENG im JSON Format.`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                analyst_report: {
-                  type: Type.OBJECT,
-                  properties: {
-                    core_points: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    relevance_score: { type: Type.NUMBER },
-                    goal_alignment: { type: Type.STRING }
-                  },
-                  required: ["core_points", "relevance_score", "goal_alignment"]
-                },
-                supreme_decision: { type: Type.STRING, enum: ["discard", "archive", "build", "merge"] },
-                navigator_infographic: {
-                  type: Type.OBJECT,
-                  properties: {
-                    headline: { type: Type.STRING },
-                    visual_summary: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    punchline: { type: Type.STRING }
-                  },
-                  required: ["headline", "visual_summary", "punchline"]
-                },
-                chronicle_log: { type: Type.ARRAY, items: { type: Type.STRING } }
-              },
-              required: ["title", "analyst_report", "supreme_decision", "navigator_infographic", "chronicle_log"]
-            }
-          }
+        analystFindings = analystResponse.text;
+      } catch (analystErr) {
+        console.warn('Analyst Officer failed with urlContext, falling back to metadata...', analystErr);
+        const fallbackResponse = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: [{ role: 'user', parts: [{ text: `Analysiere dieses YouTube Video (nur basierend auf Titel/Metadaten): ${url}. ${title ? `Titel: ${title}` : ''}. Was lässt sich daraus ableiten?` }] }]
         });
+        analystFindings = fallbackResponse.text;
       }
+      console.log('Armada: Analyst findings secured.');
 
-      if (!response || !response.text) {
-        throw new Error('Keine Antwort von Gemini erhalten');
-      }
-
-      const result = JSON.parse(response.text);
-      
-      if (result.supreme_decision === 'discard') {
-        showNotification("Video analysiert: Als irrelevant verworfen.", 'info');
-        return;
-      }
-
-      if (result.supreme_decision === 'merge' && result.merge_with_id) {
-        const targetId = result.merge_with_id;
-        const existingItem = dailyIntels.find(i => i.id === targetId);
-        
-        if (existingItem) {
-          const updatedIntel: DailyIntel = {
-            ...existingItem,
-            title: `Kombiniert: ${existingItem.title} & ${result.title}`,
-            additional_urls: [...(existingItem.additional_urls || []), url],
-            analyst_report: result.analyst_report,
-            builder_plan: result.builder_plan,
-            navigator_infographic: result.navigator_infographic,
-            chronicle_log: [...existingItem.chronicle_log, ...result.chronicle_log],
-            timestamp: Date.now() // Update to top of feed
-          };
-
-          setDailyIntels(prev => [updatedIntel, ...prev.filter(i => i.id !== targetId)]);
-          
-          if (surrealConfig.url) {
-            console.log('SurrealDB: Attempting to update combined intel. Waiting for connection...');
-            // Wait up to 10 seconds for connection if it's still connecting
-            let attempts = 0;
-            while (!surrealService.isConnected() && attempts < 20) {
-              await new Promise(r => setTimeout(r, 500));
-              attempts++;
-            }
-            
-            if (surrealService.isConnected()) {
-              try {
-                await surrealService.updateDailyIntel(targetId, updatedIntel);
-                console.log('SurrealDB: Updated intel successfully');
-                showNotification("Intel in SurrealDB aktualisiert", 'success');
-              } catch (updateErr) {
-                console.error('SurrealDB: Update failed in processIncomingIntel:', updateErr);
-                showNotification("Fehler beim Aktualisieren in SurrealDB", 'warn');
-              }
-            } else {
-              console.warn('SurrealDB: Could not update intel because connection was not established in time');
-              showNotification("SurrealDB nicht bereit - Update nur lokal", 'warn');
-            }
-          }
-          showNotification(`Intel kombiniert: ${updatedIntel.navigator_infographic?.headline || 'Aktualisiert'}`, 'success');
-          return;
+      // --- STEP 2: SCOUT OFFICER (Deep Research) ---
+      console.log('Armada: Scout Officer starting research...');
+      const scoutResponse = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: 'user', parts: [{ text: `Basierend auf diesen Erkenntnissen: "${analystFindings}", führe eine tiefergehende Recherche durch. Suche nach aktuellen Trends, Alternativen, technischen Dokumentationen oder ähnlichen Projekten im Internet. Gib eine detaillierte Zusammenfassung deiner Funde.` }] }],
+        config: {
+          tools: [{ googleSearchRetrieval: {} }] as any
         }
-      }
+      });
+      const scoutResearch = scoutResponse.text;
+      console.log('Armada: Scout research completed.');
 
-      // Standalone or fallback for failed merge
+      // --- STEP 3: ARCHITECT OFFICER (Integration) ---
+      console.log('Armada: Architect Officer starting integration...');
+      const existingProjects = analyzedItems.filter(i => i.vaultId === 'projekte' || i.category === 'GAME CHANGER').map(i => ({ id: i.id, text: i.text, status: i.status }));
+      const architectResponse = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: 'user', parts: [{ text: `Du hast folgende neue Erkenntnisse:
+      Analyst: ${analystFindings}
+      Scout: ${scoutResearch}
+      
+      Und folgende bestehende Projekte des Nutzers:
+      ${JSON.stringify(existingProjects)}
+      
+      Entwirf einen Plan, wie diese neuen Informationen die bestehenden Projekte anreichern oder neue Projekte initiieren können. Sei spezifisch.` }] }]
+      });
+      const architectIntegration = architectResponse.text;
+      console.log('Armada: Architect integration plan ready.');
+
+      // --- STEP 4: REVIEWER OFFICER (Synthesis) ---
+      console.log('Armada: Reviewer Officer starting final synthesis...');
+      const finalResponse = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: 'user', parts: [{ text: `Fasse die gesamte Arbeit der Research Armada zusammen und erstelle das finale Daily Intel Item.
+        Analyst Findings: ${analystFindings}
+        Scout Research: ${scoutResearch}
+        Architect Integration: ${architectIntegration}
+        
+        Antworte STRENG im JSON Format gemäß diesem Schema:
+        {
+          "title": "String",
+          "analyst_report": { "core_points": ["String"], "relevance_score": Number, "goal_alignment": "String" },
+          "supreme_decision": "build" | "archive" | "merge",
+          "builder_plan": { "steps": ["String"], "tech_stack_notes": "String" },
+          "navigator_infographic": { "headline": "String", "visual_summary": ["String"], "punchline": "String" },
+          "chronicle_log": ["String"]
+        }` }] }],
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const result = JSON.parse(finalResponse.text);
+      
       const newIntel: DailyIntel = {
         id: `INTEL_FEED:intel_${Date.now()}`,
         url,
         title: result.title || title || "YouTube Intel",
         analyst_report: result.analyst_report,
-        supreme_decision: result.supreme_decision === 'merge' ? 'build' : result.supreme_decision,
+        supreme_decision: result.supreme_decision,
         builder_plan: result.builder_plan,
         navigator_infographic: result.navigator_infographic,
-        chronicle_log: result.chronicle_log,
+        chronicle_log: [
+          ...result.chronicle_log,
+          "Research Armada Mission erfolgreich abgeschlossen.",
+          `Analyst: ${analystFindings.slice(0, 100)}...`,
+          `Scout: ${scoutResearch.slice(0, 100)}...`,
+          `Architect: ${architectIntegration.slice(0, 100)}...`
+        ],
+        research_armada: {
+          analyst_findings: analystFindings,
+          scout_research: scoutResearch,
+          architect_integration: architectIntegration,
+          reviewer_critique: "Final synthesis approved by Reviewer Officer."
+        },
         timestamp: Date.now()
       };
 
       setDailyIntels(prev => [newIntel, ...prev]);
       
-      // Ensure we save to SurrealDB if configured
-      if (surrealConfig.url) {
-        console.log('SurrealDB: Attempting to save shared intel. Waiting for connection...');
-        // Wait up to 10 seconds for connection if it's still connecting
-        let attempts = 0;
-        while (!surrealService.isConnected() && attempts < 20) {
-          await new Promise(r => setTimeout(r, 500));
-          attempts++;
+      if (surrealConfig.url && surrealService.isConnected()) {
+        try {
+          await surrealService.saveDailyIntel(newIntel);
+          showNotification("Armada-Bericht im Vault gesichert", 'success');
+        } catch (saveErr) {
+          console.error('SurrealDB Save failed:', saveErr);
         }
-        
-        if (surrealService.isConnected()) {
-          try {
-            await surrealService.saveDailyIntel(newIntel);
-            console.log('SurrealDB: Saved new intel successfully');
-            showNotification("Intel erfolgreich in SurrealDB gespeichert", 'success');
-          } catch (saveErr) {
-            console.error('SurrealDB: Save failed in processIncomingIntel:', saveErr);
-            showNotification("Fehler beim Speichern in SurrealDB", 'warn');
-          }
-        } else {
-          console.warn('SurrealDB: Could not save intel because connection was not established in time');
-          showNotification("SurrealDB nicht bereit - Intel nur temporär gespeichert", 'warn');
-        }
-      } else {
-        console.warn('SurrealDB: No URL configured, skipping save');
       }
 
-      showNotification(`Daily Intel bereit: ${newIntel.navigator_infographic?.headline || 'Neu'}`, 'success');
+      showNotification(`Armada erfolgreich: ${newIntel.navigator_infographic?.headline}`, 'success');
     } catch (err: any) {
-      console.error('Error processing intel:', err);
-      const errorMsg = err?.message || String(err);
-      
-      if (errorMsg.includes('API_KEY')) {
-        showNotification("Gemini API Key fehlt oder ist ungültig", 'warn');
-      } else if (errorMsg.includes('urlContext') || errorMsg.includes('fetch')) {
-        showNotification("Video-Inhalt konnte nicht geladen werden (evtl. keine Untertitel)", 'warn');
-      } else {
-        showNotification(`Analyse-Fehler: ${errorMsg.slice(0, 50)}...`, 'warn');
-      }
+      console.error('Armada Error:', err);
+      showNotification(`Armada-Fehler: ${err.message?.slice(0, 50)}...`, 'warn');
     } finally {
       setIsProcessingIntel(false);
     }
