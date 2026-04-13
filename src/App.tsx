@@ -313,40 +313,40 @@ export default function App() {
       let analystFindings = "";
       try {
         const analystResponse = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "gemini-3-flash-preview",
           contents: [{ role: 'user', parts: [{ text: `Analysiere dieses YouTube Video: ${url}. ${title ? `Titel: ${title}` : ''}. Extrahiere die Kernaussagen, technischen Details und bewerte die Relevanz (0-10).` }] }],
           config: {
             tools: [{ urlContext: {} }] as any
           }
         });
-        analystFindings = analystResponse.text;
+        analystFindings = analystResponse.text || "Keine Analyse möglich.";
       } catch (analystErr) {
         console.warn('Analyst Officer failed with urlContext, falling back to metadata...', analystErr);
         const fallbackResponse = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "gemini-3-flash-preview",
           contents: [{ role: 'user', parts: [{ text: `Analysiere dieses YouTube Video (nur basierend auf Titel/Metadaten): ${url}. ${title ? `Titel: ${title}` : ''}. Was lässt sich daraus ableiten?` }] }]
         });
-        analystFindings = fallbackResponse.text;
+        analystFindings = fallbackResponse.text || "Keine Metadaten-Analyse möglich.";
       }
       console.log('Armada: Analyst findings secured.');
 
       // --- STEP 2: SCOUT OFFICER (Deep Research) ---
       console.log('Armada: Scout Officer starting research...');
       const scoutResponse = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: `Basierend auf diesen Erkenntnissen: "${analystFindings}", führe eine tiefergehende Recherche durch. Suche nach aktuellen Trends, Alternativen, technischen Dokumentationen oder ähnlichen Projekten im Internet. Gib eine detaillierte Zusammenfassung deiner Funde.` }] }],
         config: {
-          tools: [{ googleSearchRetrieval: {} }] as any
+          tools: [{ googleSearch: {} }] as any
         }
       });
-      const scoutResearch = scoutResponse.text;
+      const scoutResearch = scoutResponse.text || "Keine Rechercheergebnisse.";
       console.log('Armada: Scout research completed.');
 
       // --- STEP 3: ARCHITECT OFFICER (Integration) ---
       console.log('Armada: Architect Officer starting integration...');
       const existingProjects = analyzedItems.filter(i => i.vaultId === 'projekte' || i.category === 'GAME CHANGER').map(i => ({ id: i.id, text: i.text, status: i.status }));
       const architectResponse = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: `Du hast folgende neue Erkenntnisse:
       Analyst: ${analystFindings}
       Scout: ${scoutResearch}
@@ -356,13 +356,13 @@ export default function App() {
       
       Entwirf einen Plan, wie diese neuen Informationen die bestehenden Projekte anreichern oder neue Projekte initiieren können. Sei spezifisch.` }] }]
       });
-      const architectIntegration = architectResponse.text;
+      const architectIntegration = architectResponse.text || "Kein Integrationsplan erstellt.";
       console.log('Armada: Architect integration plan ready.');
 
       // --- STEP 4: REVIEWER OFFICER (Synthesis) ---
       console.log('Armada: Reviewer Officer starting final synthesis...');
       const finalResponse = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: `Fasse die gesamte Arbeit der Research Armada zusammen und erstelle das finale Daily Intel Item.
         Analyst Findings: ${analystFindings}
         Scout Research: ${scoutResearch}
@@ -382,7 +382,7 @@ export default function App() {
         }
       });
 
-      const result = JSON.parse(finalResponse.text);
+      const result = JSON.parse(finalResponse.text || "{}");
       
       const newIntel: DailyIntel = {
         id: `INTEL_FEED:intel_${Date.now()}`,
