@@ -208,8 +208,8 @@ export const VideoAnalyst: React.FC<VideoAnalystProps> = ({
             {/* Input Section */}
             <div className="bg-white/[0.03] p-6 rounded-3xl border border-white/5 space-y-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <span className="text-[10px] font-black text-emerald-500/80 uppercase tracking-widest">Live Multimodal Engine Aktiv</span>
+                <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(220,38,38,0.5)]" />
+                <span className="text-[10px] font-black text-red-500/80 uppercase tracking-widest">Live Multimodal Engine Aktiv</span>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -288,7 +288,7 @@ export const VideoAnalyst: React.FC<VideoAnalystProps> = ({
                   "w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3",
                   isAnalyzing 
                     ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
-                    : "bg-primary text-slate-950 hover:bg-emerald-400 active:scale-[0.98] shadow-lg shadow-primary/20"
+                    : "bg-primary text-slate-950 hover:bg-red-400 active:scale-[0.98] shadow-lg shadow-primary/20"
                 )}
               >
                 {isAnalyzing ? (
@@ -319,7 +319,7 @@ export const VideoAnalyst: React.FC<VideoAnalystProps> = ({
                     <div className="flex gap-1">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
                     </div>
                   </div>
                   <div className="p-4 font-mono text-[10px] space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
@@ -355,7 +355,7 @@ export const VideoAnalyst: React.FC<VideoAnalystProps> = ({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 text-emerald-400 text-sm"
+                  className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-sm"
                 >
                   <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
                   Analyse erfolgreich abgeschlossen und im Vault gespeichert.

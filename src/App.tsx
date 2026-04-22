@@ -244,6 +244,7 @@ export default function App() {
   } = useSeeds(showNotification, surrealStatus, setLogs);
 
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [isOperativeStatusCollapsed, setIsOperativeStatusCollapsed] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const [isSurrealModalOpen, setIsSurrealModalOpen] = useState(false);
@@ -2012,8 +2013,8 @@ export default function App() {
     datasets: [{
       label: 'Aktueller Fokus',
       data: pillars.map(p => p.value),
-      backgroundColor: 'rgba(16, 185, 129, 0.2)',
-      borderColor: '#10b981',
+      backgroundColor: 'rgba(220, 38, 38, 0.2)',
+      borderColor: '#dc2626',
       pointBackgroundColor: pillars.map(p => p.color),
       pointBorderColor: '#fff',
       pointHoverBackgroundColor: '#fff',
@@ -2045,7 +2046,7 @@ export default function App() {
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.9)',
         titleColor: '#fff',
-        bodyColor: '#10b981',
+        bodyColor: '#dc2626',
         borderColor: '#334155',
         borderWidth: 1,
         padding: 10,
@@ -2157,7 +2158,7 @@ export default function App() {
               className={cn(
                 "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
                 activeView === 'kern' 
-                  ? "bg-primary text-slate-900 shadow-lg shadow-primary/20" 
+                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20" 
                   : "text-slate-500 hover:text-slate-300"
               )}
             >
@@ -2286,6 +2287,8 @@ export default function App() {
               setSelectedFilterId={setSelectedFilterId}
               analyzedItems={analyzedItems}
               handleExportCSV={handleExportCSV}
+              isOperativeStatusCollapsed={isOperativeStatusCollapsed}
+              setIsOperativeStatusCollapsed={setIsOperativeStatusCollapsed}
             />
           )}
 
@@ -2428,7 +2431,7 @@ export default function App() {
                                   type === 'Seed' ? "bg-purple-500" :
                                   type === 'Projekt' ? "bg-blue-500" :
                                   type === 'Erkenntnis' ? "bg-amber-500" :
-                                  type === 'Mission' ? "bg-red-500" : "bg-emerald-500"
+                                  type === 'Mission' ? "bg-red-500" : "bg-red-600"
                                 )} />
                                 {type}
                               </div>
@@ -2672,7 +2675,7 @@ export default function App() {
                                     type === 'Seed' ? "#8b5cf6" :
                                     type === 'Projekt' ? "#3b82f6" :
                                     type === 'Erkenntnis' ? "#f59e0b" :
-                                    type === 'Mission' ? "#ef4444" : "#10b981"
+                                    type === 'Mission' ? "#ef4444" : "#dc2626"
                                   }
                                   stroke={isSelected ? "white" : "rgba(255,255,255,0.1)"}
                                   strokeWidth={isSelected ? 3 : 1}
@@ -2715,7 +2718,7 @@ export default function App() {
                           type === 'Seed' ? "bg-purple-500" :
                           type === 'Projekt' ? "bg-blue-500" :
                           type === 'Erkenntnis' ? "bg-amber-500" :
-                          type === 'Mission' ? "bg-red-500" : "bg-emerald-500"
+                          type === 'Mission' ? "bg-red-500" : "bg-red-600"
                         )} />
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{type}</span>
                       </div>
@@ -2742,7 +2745,7 @@ export default function App() {
                                 selectedMapNode.vaultId === 'ideen' ? "bg-purple-500/20 text-purple-400" :
                                 selectedMapNode.vaultId === 'projekte' ? "bg-blue-500/20 text-blue-400" :
                                 selectedMapNode.vaultId === 'erkenntnisse' ? "bg-amber-500/20 text-amber-400" :
-                                selectedMapNode.vaultId === 'ziele' ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+                                selectedMapNode.vaultId === 'ziele' ? "bg-red-500/20 text-red-400" : "bg-red-600/20 text-red-500"
                               )}>
                                 {selectedMapNode.vaultId === 'ideen' ? 'Seed' :
                                  selectedMapNode.vaultId === 'projekte' ? 'Projekt' :
@@ -3108,7 +3111,7 @@ export default function App() {
                     <button 
                       type="submit"
                       disabled={surrealStatus === 'connecting'}
-                      className="w-full bg-primary hover:bg-emerald-600 text-slate-900 font-bold py-3 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-emerald-900/20"
+                      className="w-full bg-primary hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-red-900/20"
                     >
                       {surrealStatus === 'connecting' ? (
                         <>

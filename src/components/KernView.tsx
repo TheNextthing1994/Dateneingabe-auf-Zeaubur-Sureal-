@@ -100,6 +100,8 @@ interface KernViewProps {
   setSelectedFilterId: (id: string | null) => void;
   analyzedItems: AnalyzedItem[];
   handleExportCSV: () => void;
+  isOperativeStatusCollapsed: boolean;
+  setIsOperativeStatusCollapsed: (val: boolean) => void;
 }
 
 export function KernView({
@@ -153,7 +155,9 @@ export function KernView({
   selectedFilterId,
   setSelectedFilterId,
   analyzedItems,
-  handleExportCSV
+  handleExportCSV,
+  isOperativeStatusCollapsed,
+  setIsOperativeStatusCollapsed
 }: KernViewProps) {
   return (
     <motion.div 
@@ -499,9 +503,20 @@ export function KernView({
               {/* Operative Dashboard */}
               <div className="mb-6 sm:mb-8">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center">
-                    <Settings className="w-3 h-3 mr-2" /> Operative Status
-                  </h3>
+                  <button 
+                    onClick={() => setIsOperativeStatusCollapsed(!isOperativeStatusCollapsed)}
+                    className="group flex items-center"
+                  >
+                    <h3 className="text-xs font-mono text-slate-500 group-hover:text-primary transition-colors uppercase tracking-widest flex items-center">
+                      <Settings className={cn("w-3 h-3 mr-2 transition-transform duration-300", !isOperativeStatusCollapsed && "rotate-90")} /> 
+                      Operative Status
+                      {isOperativeStatusCollapsed ? (
+                        <ChevronDown className="w-3 h-3 ml-2 text-slate-600 group-hover:text-primary transition-colors" />
+                      ) : (
+                        <ChevronUp className="w-3 h-3 ml-2 text-slate-600 group-hover:text-primary transition-colors" />
+                      )}
+                    </h3>
+                  </button>
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={handleExportCSV}
@@ -523,89 +538,99 @@ export function KernView({
                     )}
                   </div>
                 </div>
-                <div className="pb-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {OPERATIVE_TILES.map(tile => {
-                      const tileItems = analyzedItems.filter(i => i.status === tile.status);
-                      const count = tileItems.length;
-                      const isActive = selectedFilterId === tile.id;
-                      
-                      // Mini-Kontext Logik
-                      let contextStr = "";
-                      if (tile.id === 'offen') {
-                        if (count === 0) contextStr = "Keine neuen Seeds";
-                        else {
-                          const oldest = Math.min(...tileItems.map(i => i.timestamp || Date.now()));
-                          const diffMin = Math.floor((Date.now() - oldest) / 60000);
-                          const timeStr = diffMin < 1 ? "gerade eben" : diffMin < 60 ? `seit ${diffMin} Min` : `seit ${Math.floor(diffMin/60)} Std`;
-                          contextStr = `${count} unverarbeitete Seeds ${timeStr}`;
-                        }
-                      } else if (tile.id === 'in_arbeit') {
-                        contextStr = count === 1 ? "1 aktive Mission" : `${count} aktive Missionen`;
-                      } else if (tile.id === 'blockiert') {
-                        contextStr = count === 1 ? "1 offener Blocker" : `${count} offene Blocker`;
-                      }
+                <AnimatePresence>
+                  {!isOperativeStatusCollapsed && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="overflow-hidden pb-2"
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {OPERATIVE_TILES.map(tile => {
+                          const tileItems = analyzedItems.filter(i => i.status === tile.status);
+                          const count = tileItems.length;
+                          const isActive = selectedFilterId === tile.id;
+                          
+                          // Mini-Kontext Logik
+                          let contextStr = "";
+                          if (tile.id === 'offen') {
+                            if (count === 0) contextStr = "Keine neuen Seeds";
+                            else {
+                              const oldest = Math.min(...tileItems.map(i => i.timestamp || Date.now()));
+                              const diffMin = Math.floor((Date.now() - oldest) / 60000);
+                              const timeStr = diffMin < 1 ? "gerade eben" : diffMin < 60 ? `seit ${diffMin} Min` : `seit ${Math.floor(diffMin/60)} Std`;
+                              contextStr = `${count} unverarbeitete Seeds ${timeStr}`;
+                            }
+                          } else if (tile.id === 'in_arbeit') {
+                            contextStr = count === 1 ? "1 aktive Mission" : `${count} aktive Missionen`;
+                          } else if (tile.id === 'blockiert') {
+                            contextStr = count === 1 ? "1 offener Blocker" : `${count} offene Blocker`;
+                          }
 
-                      return (
-                        <button 
-                          key={tile.id} 
-                          onClick={() => setSelectedFilterId(isActive ? null : tile.id)}
-                          className="flex flex-col items-center group outline-none w-full"
-                        >
-                          <div className={cn(
-                            "w-full bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
-                            isActive 
-                              ? "border-primary/50 bg-primary/[0.02] shadow-[0_0_20px_rgba(16,185,129,0.05)] scale-[1.02]" 
-                              : "border-white/5 hover:border-white/10",
-                            tile.id === 'in_arbeit' && count > 0 && "shadow-[0_0_25px_rgba(59,130,246,0.15)]",
-                            tile.id === 'blockiert' && count > 0 && "border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
-                          )}>
-                            {/* Background Glow */}
-                            <div className={cn(
-                              "absolute -top-12 -right-12 w-24 h-24 blur-3xl rounded-full transition-all duration-500",
-                              tile.id === 'in_arbeit' && count > 0 ? "bg-primary/20" : "bg-white/5"
-                            )}></div>
-                            
-                            <div className={cn(
-                              "w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all duration-300",
-                              isActive ? "bg-primary/20 scale-110" : "bg-white/5 group-hover:scale-110",
-                              tile.id === 'blockiert' && count > 0 && "animate-pulse"
-                            )}>
-                              {tile.icon}
-                            </div>
-                            
-                            <div className="text-left flex-1">
-                              <span className={cn(
-                                "block text-[10px] font-bold uppercase tracking-[0.2em] mb-1 transition-colors",
-                                isActive ? "text-primary" : "text-slate-500"
+                          return (
+                            <button 
+                              key={tile.id} 
+                              onClick={() => setSelectedFilterId(isActive ? null : tile.id)}
+                              className="flex flex-col items-center group outline-none w-full"
+                            >
+                              <div className={cn(
+                                "w-full bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border p-4 sm:p-6 flex items-center gap-4 relative transition-all duration-300 overflow-hidden",
+                                isActive 
+                                  ? "border-primary/50 bg-primary/[0.02] shadow-[0_0_20px_rgba(16,185,129,0.05)] scale-[1.02]" 
+                                  : "border-white/5 hover:border-white/10",
+                                tile.id === 'in_arbeit' && count > 0 && "shadow-[0_0_25px_rgba(59,130,246,0.15)]",
+                                tile.id === 'blockiert' && count > 0 && "border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
                               )}>
-                                {tile.name}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-2xl font-black text-white">
-                                  {count}
-                                </span>
-                                {tile.id === 'blockiert' && count > 0 && (
-                                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                                )}
-                                {tile.id === 'in_arbeit' && count > 0 && (
-                                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                                {/* Background Glow */}
+                                <div className={cn(
+                                  "absolute -top-12 -right-12 w-24 h-24 blur-3xl rounded-full transition-all duration-500",
+                                  tile.id === 'in_arbeit' && count > 0 ? "bg-primary/20" : "bg-white/5"
+                                )}></div>
+                                
+                                <div className={cn(
+                                  "w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all duration-300",
+                                  isActive ? "bg-primary/20 scale-110" : "bg-white/5 group-hover:scale-110",
+                                  tile.id === 'blockiert' && count > 0 && "animate-pulse"
+                                )}>
+                                  {tile.icon}
+                                </div>
+                                
+                                <div className="text-left flex-1">
+                                  <span className={cn(
+                                    "block text-[10px] font-bold uppercase tracking-[0.2em] mb-1 transition-colors",
+                                    isActive ? "text-primary" : "text-slate-500"
+                                  )}>
+                                    {tile.name}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black text-white">
+                                      {count}
+                                    </span>
+                                    {tile.id === 'blockiert' && count > 0 && (
+                                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                                    )}
+                                    {tile.id === 'in_arbeit' && count > 0 && (
+                                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
+                                    )}
+                                  </div>
+                                  <p className="text-[9px] font-medium text-slate-400 mt-1 italic leading-tight">
+                                    {contextStr}
+                                  </p>
+                                </div>
+
+                                {isActive && (
+                                  <div className="absolute bottom-0 left-0 h-1 bg-primary w-full"></div>
                                 )}
                               </div>
-                              <p className="text-[9px] font-medium text-slate-400 mt-1 italic leading-tight">
-                                {contextStr}
-                              </p>
-                            </div>
-
-                            {isActive && (
-                              <div className="absolute bottom-0 left-0 h-1 bg-primary w-full"></div>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="mb-8">
@@ -644,21 +669,21 @@ export function KernView({
                           key={task.id}
                           className={cn(
                             "flex items-center gap-3 p-3 rounded-xl border transition-all group",
-                            task.completed ? "bg-emerald-500/5 border-emerald-500/20" : "bg-white/5 border-white/5 hover:border-white/10"
+                            task.completed ? "bg-red-500/10 border-red-500/20" : "bg-white/5 border-white/5 hover:border-white/10"
                           )}
                         >
                           <button 
                             onClick={() => handleToggleWeeklyTask(task)}
                             className={cn(
                               "w-5 h-5 rounded-md border flex items-center justify-center transition-all",
-                              task.completed ? "bg-emerald-500 border-emerald-500 text-dark" : "border-white/20 hover:border-primary/50"
+                              task.completed ? "bg-red-500 border-red-500 text-white font-bold" : "border-white/20 hover:border-primary/50"
                             )}
                           >
                             {task.completed && <Check className="w-3.5 h-3.5" />}
                           </button>
                           <span className={cn(
                             "flex-1 text-sm transition-all",
-                            task.completed ? "text-emerald-400/50 line-through" : "text-slate-200"
+                            task.completed ? "text-red-400/50 line-through" : "text-slate-200"
                           )}>
                             {task.text}
                           </span>
@@ -792,13 +817,11 @@ export function KernView({
                               <div className="flex items-center gap-1.5">
                                 <div className={cn(
                                   "w-1.5 h-1.5 rounded-full",
-                                  topPriority.status === 'In Arbeit' ? "bg-blue-500" : 
-                                  topPriority.status === 'Blockiert' ? "bg-red-500" : "bg-emerald-500"
+                                  topPriority.status === 'In Arbeit' ? "bg-blue-500" : "bg-red-500"
                                 )}></div>
                                 <span className={cn(
                                   "text-[11px] font-bold uppercase tracking-tight",
-                                  topPriority.status === 'In Arbeit' ? "text-blue-400" : 
-                                  topPriority.status === 'Blockiert' ? "text-red-400" : "text-emerald-400"
+                                  topPriority.status === 'In Arbeit' ? "text-blue-400" : "text-red-400"
                                 )}>
                                   {topPriority.status || 'Offen'}
                                 </span>

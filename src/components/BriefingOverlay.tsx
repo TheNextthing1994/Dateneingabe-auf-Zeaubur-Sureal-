@@ -81,10 +81,10 @@ export function BriefingOverlay({ onDismiss, onShowIntel, onShowDetails, mission
           </button>
           <div className="p-6 bg-slate-900/40">
             <div className="flex items-center gap-2 mb-2">
-              <Activity className="w-3 h-3 text-emerald-500" />
+              <Activity className="w-3 h-3 text-red-500" />
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Neural Sync</span>
             </div>
-            <p className="text-2xl font-black text-emerald-400">{stats.sync}</p>
+            <p className="text-2xl font-black text-red-400">{stats.sync}</p>
           </div>
         </div>
 

@@ -176,8 +176,9 @@ export const LiquidMetal: React.FC<{ isActive: boolean }> = ({ isActive }) => {
         vec3 getEnvColor(vec3 ray) {
           // Base sky/ground gradient
           float sky = smoothstep(-0.5, 1.0, ray.y);
-          vec3 skyColor = mix(vec3(0.01, 0.02, 0.01), vec3(0.4, 1.0, 0.8), sky);
-          vec3 groundColor = mix(vec3(0.0, 0.01, 0.0), vec3(0.02, 0.1, 0.05), 1.0 - sky);
+          vec3 skyColor = mix(vec3(0.02, 0.0, 0.01), vec3(1.0, 0.4, 0.4), sky);
+          // Austria/Red Theme Ground Colors
+          vec3 groundColor = mix(vec3(0.02, 0.0, 0.0), vec3(0.1, 0.02, 0.02), 1.0 - sky);
           
           vec3 color = skyColor + groundColor;
 
@@ -191,13 +192,13 @@ export const LiquidMetal: React.FC<{ isActive: boolean }> = ({ isActive }) => {
             ));
             
             float spec = pow(max(0.0, dot(ray, lPos)), 24.0 + fi * 8.0);
-            vec3 lCol = mix(vec3(1.0), vec3(0.4, 1.0, 0.7), 0.5 * sin(uTime + fi));
+            vec3 lCol = mix(vec3(1.0), vec3(1.0, 0.25, 0.3), 0.5 * sin(uTime + fi));
             color += lCol * spec * (1.5 - fi * 0.3);
           }
 
-          // Add some emerald sparkle
+          // Add some red sparkle
           float horizon = 1.0 - abs(ray.y);
-          color += vec3(0.2, 0.8, 0.5) * pow(horizon, 12.0) * 0.5;
+          color += vec3(0.8, 0.2, 0.2) * pow(horizon, 12.0) * 0.5;
           
           return color;
         }
@@ -231,7 +232,7 @@ export const LiquidMetal: React.FC<{ isActive: boolean }> = ({ isActive }) => {
           // Mouse-based color shift
           float mouseDist = distance(vUv, uMouse * 0.5 + 0.5);
           float mouseHighlight = smoothstep(0.4, 0.0, mouseDist);
-          finalColor = mix(finalColor, finalColor + vec3(0.1, 0.3, 0.2), mouseHighlight * uMouseStrength);
+          finalColor = mix(finalColor, finalColor + vec3(0.3, 0.1, 0.1), mouseHighlight * uMouseStrength);
 
           // High-frequency highlights
           float spec = pow(max(0.0, dot(normal, normalize(vec3(1.0, 1.0, 1.0)))), 128.0);

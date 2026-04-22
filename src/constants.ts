@@ -8,9 +8,9 @@ import { Pillar } from './types';
 export const VAULTS = [
   { id: 'ideen', name: 'IDEEN DECK', icon: '💡', color: '#8b5cf6' },
   { id: 'projekte', name: 'PROJEKT AKTEN', icon: '📁', color: '#3b82f6' },
-  { id: 'kunden', name: 'KUNDEN ANFRAGEN', icon: '🤝', color: '#10b981' },
+  { id: 'kunden', name: 'KUNDEN ANFRAGEN', icon: '🤝', color: '#dc2626' },
   { id: 'ziele', name: 'MISSIONS ZIELE', icon: '🎯', color: '#ef4444' },
-  { id: 'workflows', name: 'STRATEGIEN / WORKFLOWS', icon: '⚙️', color: '#10b981' },
+  { id: 'workflows', name: 'STRATEGIEN / WORKFLOWS', icon: '⚙️', color: '#dc2626' },
   { id: 'academy', name: 'ACADEMY & SUBS', icon: '🎓', color: '#f59e0b' },
   { id: 'erkenntnisse', name: 'ERKENNTNISSE', icon: '🧠', color: '#f59e0b' },
   { id: 'toolbox', name: 'TOOLBOX', icon: '🧰', color: '#64748b' }
@@ -25,7 +25,7 @@ export const OPERATIVE_TILES = [
 export const INITIAL_PILLARS: Pillar[] = [
   { id: 'health', name: 'Gesundheit', icon: '🌿', color: '#3b82f6' },
   { id: 'dev', name: 'Pers. Entwicklung', icon: '📚', color: '#f59e0b' },
-  { id: 'finance', name: 'Business & Finanzen', icon: '💰', color: '#10b981' },
+  { id: 'finance', name: 'Business & Finanzen', icon: '💰', color: '#dc2626' },
   { id: 'mindset', name: 'Mentalität', icon: '🧠', color: '#8b5cf6' },
   { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
 ];

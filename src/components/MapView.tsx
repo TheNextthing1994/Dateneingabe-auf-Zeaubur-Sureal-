@@ -403,7 +403,7 @@ export function MapView({
                           type === 'Seed' ? "bg-purple-500" :
                           type === 'Projekt' ? "bg-blue-500" :
                           type === 'Erkenntnis' ? "bg-amber-500" :
-                          type === 'Mission' ? "bg-red-500" : "bg-emerald-500"
+                          type === 'Mission' ? "bg-red-500" : "bg-red-600"
                         )} />
                         {type}
                       </div>
@@ -647,7 +647,7 @@ export function MapView({
                             type === 'Seed' ? "#8b5cf6" :
                             type === 'Projekt' ? "#3b82f6" :
                             type === 'Erkenntnis' ? "#f59e0b" :
-                            type === 'Mission' ? "#ef4444" : "#10b981"
+                            type === 'Mission' ? "#ef4444" : "#dc2626"
                           }
                           stroke={isSelected ? "white" : "rgba(255,255,255,0.1)"}
                           strokeWidth={isSelected ? 3 : 1}
@@ -690,7 +690,7 @@ export function MapView({
                   type === 'Seed' ? "bg-purple-500" :
                   type === 'Projekt' ? "bg-blue-500" :
                   type === 'Erkenntnis' ? "bg-amber-500" :
-                  type === 'Mission' ? "bg-red-500" : "bg-emerald-500"
+                  type === 'Mission' ? "bg-red-500" : "bg-red-600"
                 )} />
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{type}</span>
               </div>
@@ -717,7 +717,7 @@ export function MapView({
                         selectedMapNode.vaultId === 'ideen' ? "bg-purple-500/20 text-purple-400" :
                         selectedMapNode.vaultId === 'projekte' ? "bg-blue-500/20 text-blue-400" :
                         selectedMapNode.vaultId === 'erkenntnisse' ? "bg-amber-500/20 text-amber-400" :
-                        selectedMapNode.vaultId === 'ziele' ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+                        selectedMapNode.vaultId === 'ziele' ? "bg-red-500/20 text-red-400" : "bg-red-600/20 text-red-500"
                       )}>
                         {selectedMapNode.vaultId === 'ideen' ? 'Seed' :
                          selectedMapNode.vaultId === 'projekte' ? 'Projekt' :

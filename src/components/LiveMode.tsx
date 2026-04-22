@@ -966,7 +966,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     >
       {/* Background Glow Effect - Truly fixed */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-500/10 blur-[120px] rounded-full" />
       </div>
 
       {/* Fixed UI Elements */}
@@ -1028,7 +1028,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
         <div className="flex flex-col items-center">
           <div className="w-full aspect-square max-w-[400px] sm:max-w-[500px] relative">
             {/* Inner Glow behind the object */}
-            <div className="absolute inset-0 bg-emerald-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
+            <div className="absolute inset-0 bg-red-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
             <LiquidMetal isActive={status === 'active'} />
           </div>
         </div>
@@ -1047,9 +1047,9 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">↑ seit letzter Session</p>
               </div>
               <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
-                <div className="absolute -top-10 -right-10 w-20 h-20 bg-emerald-500/5 blur-2xl rounded-full group-hover:bg-emerald-500/10 transition-all" />
+                <div className="absolute -top-10 -right-10 w-20 h-20 bg-red-500/5 blur-2xl rounded-full group-hover:bg-red-500/10 transition-all" />
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Neu (Woche)</p>
-                <p className="text-3xl font-black text-emerald-400 mb-1 tracking-tight">{stats.weekly}</p>
+                <p className="text-3xl font-black text-red-400 mb-1 tracking-tight">{stats.weekly}</p>
                 <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">aktive Pipeline</p>
               </div>
               <div className="bg-white/[0.02] backdrop-blur-xl p-5 sm:p-6 rounded-[32px] border border-white/10 text-left transition-all hover:bg-white/[0.05] hover:border-white/20 group relative overflow-hidden">
@@ -1133,7 +1133,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         className={cn(
                           "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all active:scale-95 relative overflow-hidden group",
                           seedInput.trim() 
-                            ? "bg-primary text-dark shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-[1.02]" 
+                            ? "bg-primary text-white shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)] hover:scale-[1.02]" 
                             : "bg-white/5 text-slate-600 cursor-not-allowed"
                         )}
                       >
@@ -1509,7 +1509,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         log.sender === 'User' 
                           ? "bg-primary/10 border-primary/20 text-primary/90 ml-12" 
                           : log.sender === 'System'
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 mr-12 italic font-medium"
+                            ? "bg-red-500/10 border-red-500/20 text-red-400 mr-12 italic font-medium"
                             : "bg-white/5 border-white/5 text-slate-300 mr-12 italic"
                       )}
                     >
@@ -1522,7 +1522,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         </span>
                       </div>
                       <p className={cn(
-                        log.sender === 'System' ? 'text-emerald-400/90' : 'text-slate-300'
+                        log.sender === 'System' ? 'text-red-400/90' : 'text-slate-300'
                       )}>
                         {log.text}
                       </p>
@@ -1545,7 +1545,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   className={cn(
                     "px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 border",
                     isCopying 
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                      ? "bg-red-500/10 border-red-500/20 text-red-400" 
                       : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
                   )}
                 >
@@ -1558,7 +1558,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   className={cn(
                     "flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-lg",
                     saveSuccess 
-                      ? "bg-green-500 text-white shadow-green-500/20" 
+                      ? "bg-red-500 text-white shadow-red-500/20" 
                       : "bg-primary text-dark hover:bg-primary/90 shadow-primary/20"
                   )}
                 >

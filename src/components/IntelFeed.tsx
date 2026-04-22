@@ -197,7 +197,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                     </div>
                     <div className={cn(
                       "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
-                      (item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-300"
+                      (item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? "bg-red-500 text-slate-900" : "bg-slate-700 text-slate-300"
                     )}>
                       {(item.supreme_decision === 'build' || item.supreme_decision?.toString() === 'build') ? 'BUILD MODE' : 'ARCHIVED'}
                     </div>
@@ -251,8 +251,8 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                             </div>
 
                             {/* Architect Integration */}
-                            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl space-y-2">
-                              <div className="flex items-center gap-2 text-[9px] font-black text-emerald-400 uppercase tracking-widest">
+                            <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-[9px] font-black text-red-400 uppercase tracking-widest">
                                 <Compass className="w-3 h-3" /> Architect Integration
                               </div>
                               <p className="text-[11px] text-slate-300 leading-relaxed font-bold">
@@ -277,21 +277,21 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
 
                   {/* Builder Plan (If applicable) */}
                   {item.builder_plan && (
-                    <div className="space-y-4 p-5 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl">
-                      <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                    <div className="space-y-4 p-5 bg-red-500/5 border border-red-500/20 rounded-3xl">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-red-400 uppercase tracking-widest">
                         <Hammer className="w-3 h-3" /> Builder Workflow
                       </div>
                       <div className="space-y-3">
                         {item.builder_plan?.steps?.map((step, i) => (
                           <div key={i} className="flex items-start gap-3">
-                            <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-black text-emerald-400 shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center text-[10px] font-black text-red-400 shrink-0">
                               {i + 1}
                             </div>
                             <p className="text-xs text-slate-300 font-medium">{step}</p>
                           </div>
                         ))}
                       </div>
-                      <div className="pt-3 border-t border-emerald-500/10 text-[10px] text-emerald-500/60 font-mono">
+                      <div className="pt-3 border-t border-red-500/10 text-[10px] text-red-500/60 font-mono">
                         STACK: {item.builder_plan.tech_stack_notes}
                       </div>
                     </div>

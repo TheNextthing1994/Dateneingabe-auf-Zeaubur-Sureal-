@@ -285,7 +285,7 @@ export function VaultView({
                         onClick={() => setLibraryStatus(libraryStatus === status ? null : status)}
                         className={cn(
                           "px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all",
-                          libraryStatus === status ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
+                          libraryStatus === status ? "bg-red-500/20 border-red-500/40 text-red-400" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
                         )}
                       >
                         {status}

@@ -194,8 +194,8 @@ export function BoardCard({
                   </p>
                 )}
                 {item.nextStep && (
-                  <p className="text-[10px] text-emerald-400/80 font-medium">
-                    <span className="text-emerald-500 mr-1">Next:</span> {item.nextStep}
+                  <p className="text-[10px] text-red-400/80 font-medium">
+                    <span className="text-red-500 mr-1">Next:</span> {item.nextStep}
                   </p>
                 )}
               </motion.div>
@@ -238,7 +238,7 @@ export function BoardCard({
         </button>
         <button 
           onClick={() => onPin(item.text, 'intel', 'Seed', 'heute', item.nextStep)}
-          className="p-2 md:p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg hover:bg-emerald-500/20 transition-all border border-emerald-500/20 flex-shrink-0"
+          className="p-2 md:p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0"
           title="Ins Billboard pinnen"
         >
           <Pin className="w-4 h-4 md:w-3.5 md:h-3.5" />
@@ -255,7 +255,7 @@ export function BoardCard({
           className={cn(
             "p-2 md:p-1.5 rounded-lg transition-all border flex-shrink-0",
             item.isArchived 
-              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" 
+              ? "bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20" 
               : "bg-indigo-500/10 text-indigo-500 border-indigo-500/20 hover:bg-indigo-500/20"
           )}
           title={item.isArchived ? "Wiederherstellen in D.T" : "In Vault bestätigen"}
