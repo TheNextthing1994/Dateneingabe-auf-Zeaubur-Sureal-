@@ -202,7 +202,7 @@ export function KernView({
                   <button 
                     type="submit"
                     disabled={isChatting || !chatInput.trim()}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all disabled:opacity-30"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-neon-cyan hover:bg-neon-cyan/10 rounded-lg transition-all disabled:opacity-30"
                   >
                     {isChatting ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />

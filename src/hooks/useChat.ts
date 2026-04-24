@@ -35,6 +35,50 @@ export function useChat(
       surrealService.saveLog(userLog).catch(console.error);
     }
     setChatInput('');
+    
+    // YouTube Detection
+    const youtubeMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    
+    if (youtubeMatch) {
+      const videoUrl = youtubeMatch[0];
+      const systemLog: LogEntry = {
+        id: (Date.now() + 2).toString(),
+        sender: 'System',
+        text: `YouTube Link erkannt: ${videoUrl}. Starte Video-Analyse...`,
+        timestamp: Date.now()
+      };
+      setLogs(prev => [...prev, systemLog]);
+      if (surrealStatus === 'connected') {
+        surrealService.saveLog(systemLog).catch(console.error);
+      }
+      
+      try {
+        const videoService = (await import('../services/videoAnalysisService')).videoAnalysisService;
+        
+        const response = await videoService.analyzeVideo(
+          videoUrl,
+          "Analysiere dieses Video basierend auf unserer bisherigen Unterhaltung.",
+          (log) => {
+            console.log("Video Analysis Log:", log);
+          }
+        );
+
+        const aiLog: LogEntry = {
+          id: (Date.now() + 3).toString(),
+          sender: 'D.T. Kern',
+          text: `🎥 VIDEO-ANALYSE:\n\n${response}`,
+          timestamp: Date.now()
+        };
+        setLogs(prev => [...prev, aiLog]);
+        if (surrealStatus === 'connected') {
+          surrealService.saveLog(aiLog).catch(console.error);
+        }
+      } catch (err) {
+        showNotification('Video-Analyse fehlgeschlagen.', 'warn');
+      }
+      setIsChatting(false);
+      return;
+    }
 
     try {
       const apiKey = getEnv('VITE_GEMINI_API_KEY');

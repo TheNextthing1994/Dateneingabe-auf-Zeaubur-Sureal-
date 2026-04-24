@@ -2988,8 +2988,8 @@ export default function App() {
                 logs={logs}
                 agents={agents}
                 onClose={(targetView) => {
+                  setIsLiveActive(false);
                   if (targetView) setActiveView(targetView);
-                  else setIsLiveActive(false);
                 }} 
                 onSwitchView={(target) => {
                   setActiveView(target);

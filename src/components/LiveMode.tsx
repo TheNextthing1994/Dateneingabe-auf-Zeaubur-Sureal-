@@ -1667,7 +1667,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                     <button 
                       type="submit"
                       disabled={!liveChatInput.trim()}
-                      className="p-2.5 bg-primary text-dark rounded-xl hover:bg-primary/90 transition-all disabled:opacity-30 disabled:grayscale"
+                      className="p-2.5 bg-neon-cyan text-black rounded-xl hover:bg-neon-cyan/90 transition-all disabled:opacity-30 disabled:grayscale"
                     >
                       <Send className="w-4 h-4" />
                     </button>
