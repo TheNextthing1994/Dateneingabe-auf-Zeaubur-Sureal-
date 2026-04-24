@@ -28,7 +28,7 @@ export function useAgents() {
         ];
 
         for (const agent of defaults) {
-           await (surrealService as any).db.create('agents', agent);
+           await surrealService.initAgent(agent);
         }
         const updatedAgents = await surrealService.getAgents();
         setAgents(updatedAgents);

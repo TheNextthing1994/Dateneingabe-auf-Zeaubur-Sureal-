@@ -57,6 +57,7 @@ export class VideoAnalysisService {
           onLog?.("WARNUNG: Fehler beim Abrufen des Transkripts. Nutze nur URL-Kontext.");
         }
 
+        parts.push({ fileData: { mimeType: 'video/youtube', fileUri: youtubeUrl } });
         parts.push({
           text: `Du bist ein spezialisierter Video-Analyst. Analysiere das folgende Video.\n\nDATENQUELLE (TRANSKRIPT/METADATEN):\n---\n${contextData || "KEINE DATEN VERFÜGBAR."}\n---\n\nVIDEO-URL: ${youtubeUrl}\n\nNUTZER-FRAGE: ${userPrompt}\n\nANWEISUNG: Nutze das bereitgestellte Transkript und die Metadaten, um die Frage präzise zu beantworten. Falls Zeitstempel vorhanden sind, beziehe dich darauf.`
         });

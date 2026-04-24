@@ -585,7 +585,8 @@ class SurrealService {
         records = (results as any).result || [];
       }
       return records.map(item => ({ ...item, id: item.id.toString() }));
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
       console.error('Error fetching agents:', err);
       return [];
     }
@@ -595,6 +596,13 @@ class SurrealService {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const fullId = id.includes(':') ? id : `agents:${id}`;
     return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
+  async initAgent(data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const randomId = Math.random().toString(36).substring(7);
+    const fullId = `agents:${randomId}`;
+    return await (this.db as any).create(new StringRecordId(fullId), data);
   }
 
   async saveAgentLog(log: any) {
@@ -617,7 +625,8 @@ class SurrealService {
         records = (results as any).result || [];
       }
       return records.map(item => ({ ...item, id: item.id.toString() }));
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return [];
       console.error('Error fetching agent logs:', err);
       return [];
     }
@@ -644,7 +653,8 @@ class SurrealService {
         records = (results as any).result || [];
       }
       return records[0] ? { ...records[0], id: records[0].id.toString() } : null;
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) return null;
       return null;
     }
   }
