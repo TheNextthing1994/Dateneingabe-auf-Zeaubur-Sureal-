@@ -1,14 +1,26 @@
 import React from 'react';
-import { useAgents } from '../../hooks/useAgents';
 import { AgentCard } from './AgentCard';
 import { LiveLog } from './LiveLog';
 import { GoalInput } from './GoalInput';
 import { motion } from 'motion/react';
 import { LayoutGrid, Cpu, Activity, Share2 } from 'lucide-react';
+import { Agent, AgentLog, AgentGoal } from '../../types';
 
-export const AgentDashboard: React.FC = () => {
-  const { agents, logs, goal, loading, createGoal } = useAgents();
+interface AgentDashboardProps {
+  agents: Agent[];
+  logs: AgentLog[];
+  goal: AgentGoal | null;
+  loading: boolean;
+  onCreateGoal: (text: string) => Promise<void>;
+}
 
+export const AgentDashboard: React.FC<AgentDashboardProps> = ({ 
+  agents, 
+  logs, 
+  goal, 
+  loading, 
+  onCreateGoal 
+}) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -53,7 +65,7 @@ export const AgentDashboard: React.FC = () => {
         {/* Left Column: CEO & Agents (8 cols) */}
         <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-y-auto pr-2 scrollbar-none">
           <GoalInput 
-            onCreateGoal={createGoal} 
+            onCreateGoal={onCreateGoal} 
             currentGoal={goal?.text} 
           />
 

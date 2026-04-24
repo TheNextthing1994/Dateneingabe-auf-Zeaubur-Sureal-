@@ -25,7 +25,9 @@ import {
   ShieldAlert,
   Timer,
   Info,
-  Copy
+  Copy,
+  Minimize2,
+  Maximize2
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
@@ -50,7 +52,9 @@ interface LiveModeProps {
   analyzedItems: AnalyzedItem[];
   dailyIntels?: DailyIntel[];
   logs: LogEntry[];
-  onClose: (transcript?: string[]) => void;
+  agents?: any[];
+  onClose: (targetView?: 'kern' | 'vault' | 'map' | 'video' | 'agents', transcript?: string[]) => void;
+  onSwitchView: (target: 'kern' | 'vault' | 'map' | 'video' | 'agents') => void;
   onSaveTranscript: (transcript: string[]) => void;
   onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
   onSaveWeeklyTask?: (text: string) => Promise<void>;
@@ -77,7 +81,9 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   analyzedItems, 
   dailyIntels = [],
   logs,
+  agents = [],
   onClose, 
+  onSwitchView,
   onSaveTranscript, 
   onSaveItem, 
   onSaveWeeklyTask, 
@@ -101,6 +107,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
   const [processLogs, setProcessLogs] = useState<LiveLogEntry[]>([]);
   const [logSearchQuery, setLogSearchQuery] = useState('');
@@ -358,6 +365,10 @@ export const LiveMode: React.FC<LiveModeProps> = ({
         .map(i => `• ${i.text.slice(0, 80)} ${i.blockedBy ? '— Blockiert durch: ' + i.blockedBy : ''}`)
         .join('\n');
 
+      const agentStatusSummary = agents && agents.length > 0 
+        ? `=== AGENTEN-HIERARCHIE (AKTIVE MISSIONEN) ===\n` + agents.map(a => `• ${a.role}: ${a.status} (${a.task || 'Bereit'})`).join('\n')
+        : "Aktuell keine autonomen Agenten aktiv.";
+
       const austriaTime = new Intl.DateTimeFormat('de-AT', {
         timeZone: 'Europe/Vienna',
         hour: '2-digit',
@@ -396,6 +407,8 @@ DEIN STIL:
 
 === SEED DATENBANK (STAND JETZT) ===
 Gesamt: ${stats.total} Seeds | Diese Woche neu: ${stats.weekly} | Abgeschlossen: ${stats.completed}
+
+${agentStatusSummary}
 
 🔥 GAME CHANGER (Top-Priorität):
 ${gameChangers || 'Keine vorhanden'}
@@ -459,6 +472,21 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       url: { type: Type.STRING, description: "Die vollständige URL des YouTube-Videos." }
                     },
                     required: ["url"]
+                  }
+                },
+                {
+                  name: "switchView",
+                  description: "Wechselt die Ansicht der Applikation (z.B. zur Agenten-Hierarchie oder zum Vault).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      target: { 
+                        type: Type.STRING, 
+                        enum: ["kern", "vault", "map", "video", "agents"], 
+                        description: "Die Ziel-Ansicht." 
+                      }
+                    },
+                    required: ["target"]
                   }
                 }
               ]
@@ -624,6 +652,30 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                       }]
                     });
                   }
+                }
+
+                if (call.name === "switchView") {
+                  const args = call.args as any;
+                  const target = args.target;
+                  
+                  addProcessLog('info', `Wechsle zur Ansicht: ${target}`, 'system');
+                  
+                  // Send response back to model
+                  session.sendToolResponse({
+                    functionResponses: [{
+                      id: call.id,
+                      name: call.name,
+                      response: { success: true, message: `Ansicht gewechselt zu ${target}. Der Live-Modus bleibt aktiv.` }
+                    }]
+                  });
+
+                  const line = `System: [Tool] Wechsle zu Ansicht: ${target}`;
+                  setTranscript(prev => [...prev.slice(-5), line]);
+                  setFullTranscript(prev => [...prev, line]);
+                  
+                  // Switch view without closing live session
+                  onSwitchView(target as any);
+                  setIsMinimized(true);
                 }
               }
             }
@@ -962,36 +1014,103 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black"
+      className={cn(
+        "fixed z-[100] transition-all duration-500 ease-in-out",
+        isMinimized 
+          ? "bottom-8 right-8 w-80 h-24 bg-black/80 backdrop-blur-2xl border border-primary/20 rounded-3xl shadow-2xl shadow-primary/20 cursor-move" 
+          : "inset-0 bg-black"
+      )}
+      drag={isMinimized}
+      dragConstraints={{ left: -1000, right: 0, top: -1000, bottom: 0 }}
     >
-      {/* Background Glow Effect - Truly fixed */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-500/10 blur-[120px] rounded-full" />
-      </div>
-
-      {/* Fixed UI Elements */}
-      <button 
-        onClick={() => {
-          console.log("LiveMode: Closing and returning to kern");
-          onClose(fullTranscript);
-        }}
-        className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 transition-all z-[120] border border-white/5 active:scale-95"
-      >
-        <X className="w-6 h-6" />
-      </button>
-
-      {/* Ambient Status Indicators */}
-      <div className="absolute top-8 left-8 flex flex-col gap-1 z-20">
-        <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-primary animate-pulse' : 'bg-slate-600'}`} />
-          <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">System Status</span>
+      {/* Background Glow Effect - Only when maximized */}
+      {!isMinimized && (
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-500/10 blur-[120px] rounded-full" />
         </div>
-        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-3.5">
-          {status === 'active' ? 'Kern Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
-        </span>
+      )}
+
+      {/* Control Buttons (Minimize/Close) */}
+      <div className={cn(
+        "absolute flex items-center gap-2 z-[120]",
+        isMinimized ? "top-2 right-2" : "top-6 right-6"
+      )}>
+        <button 
+          onClick={() => setIsMinimized(!isMinimized)}
+          className={cn(
+            "p-2 hover:bg-white/10 rounded-xl text-slate-400 transition-all border border-white/5 active:scale-95",
+            isMinimized ? "p-1.5" : "p-3"
+          )}
+          title={isMinimized ? "Maximieren" : "Minimieren"}
+        >
+          {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-5 h-5" />}
+        </button>
+        <button 
+          onClick={() => {
+            console.log("LiveMode: Closing and returning to kern");
+            onClose('kern', fullTranscript);
+          }}
+          className={cn(
+            "p-2 hover:bg-white/10 rounded-xl text-slate-400 transition-all border border-white/5 active:scale-95",
+            isMinimized ? "p-1.5" : "p-3"
+          )}
+          title="Session beenden"
+        >
+          <X className={isMinimized ? "w-4 h-4" : "w-5 h-5"} />
+        </button>
       </div>
 
-      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-12 z-20 hidden lg:flex">
+      {isMinimized ? (
+        <div className="flex items-center gap-4 p-4 h-full">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+              <LiquidMetal 
+                isActive={status === 'active'}
+              />
+            </div>
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-black animate-pulse" />
+          </div>
+          
+          <div className="flex-1 min-w-0 pr-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-black text-white uppercase tracking-widest">Kern Active</span>
+              <div className="w-1 h-1 rounded-full bg-slate-600" />
+              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Sync</span>
+            </div>
+            <p className="text-[11px] text-primary/80 font-mono truncate leading-tight">
+              {transcript.length > 0 ? transcript[transcript.length - 1].split(': ')[1] : 'Höre zu...'}
+            </p>
+          </div>
+
+          <button 
+            onClick={() => {
+              const newMuted = !isMuted;
+              setIsMuted(newMuted);
+              isMutedRef.current = newMuted;
+            }}
+            className={cn(
+              "p-2.5 rounded-xl transition-all border",
+              isMuted ? "bg-red-500/20 border-red-500/40 text-red-500" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+            )}
+          >
+            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Ambient Status Indicators */}
+          <div className="absolute top-8 left-8 flex flex-col gap-1 z-20">
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-primary animate-pulse' : 'bg-slate-600'}`} />
+              <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">System Status</span>
+            </div>
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-3.5">
+              {status === 'active' ? 'Kern Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
+            </span>
+          </div>
+
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-12 z-20 hidden lg:flex">
+            {/* Same status items as before... */}
         <div className="flex flex-col items-center">
           <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Latenz</span>
           <span className="text-[10px] font-mono text-primary/40">24ms</span>
@@ -1278,6 +1397,37 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
               >
                 {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               </button>
+              
+              {agents && agents.length > 0 && (
+                <div className="absolute left-1/2 -translate-x-1/2 -bottom-12 flex items-center gap-4 px-4 py-2 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
+                  <div className="flex -space-x-2">
+                    {agents.slice(0, 3).map((agent, i) => (
+                      <div 
+                        key={agent.id}
+                        className={cn(
+                          "w-6 h-6 rounded-full border-2 border-black flex items-center justify-center text-[8px] font-bold",
+                          agent.role === 'CEO' ? 'bg-red-600 text-white' : 
+                          agent.role === 'Vorarbeiter' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
+                        )}
+                        title={`${agent.role}: ${agent.status}`}
+                      >
+                        {agent.role[0]}
+                      </div>
+                    ))}
+                    {agents.length > 3 && (
+                      <div className="w-6 h-6 rounded-full border-2 border-black bg-slate-800 flex items-center justify-center text-[8px] font-bold text-slate-400">
+                        +{agents.length - 3}
+                      </div>
+                    )}
+                  </div>
+                  <div className="h-4 w-[1px] bg-white/10" />
+                  <div className="flex flex-col">
+                    <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">Hierarchy Sync</span>
+                    <span className="text-[9px] font-mono text-emerald-500/80 uppercase">Active: {agents.length}</span>
+                  </div>
+                </div>
+              )}
+
               <button 
                 onClick={() => {
                   cleanup();
@@ -1298,7 +1448,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 <button 
                   onClick={() => {
                     cleanup();
-                    onClose(fullTranscript);
+                    onClose('kern', fullTranscript);
                   }}
                   className="text-[10px] sm:text-xs font-bold text-primary hover:text-white underline underline-offset-4 transition-colors uppercase tracking-widest"
                 >
@@ -1582,6 +1732,8 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
           </motion.div>
         )}
       </AnimatePresence>
+        </>
+      )}
     </motion.div>
   );
 };

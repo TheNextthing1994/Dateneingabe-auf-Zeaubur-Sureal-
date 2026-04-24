@@ -108,6 +108,7 @@ import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
 import { IntelFeed } from './components/IntelFeed';
 import { AgentDashboard } from './components/agent-hierarchy/AgentDashboard';
+import { useAgents } from './hooks/useAgents';
 import { DailyIntel } from './types';
 import { LoadingScreen } from './components/LoadingScreen';
 import { BriefingOverlay } from './components/BriefingOverlay';
@@ -207,6 +208,7 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 
 export default function App() {
   const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video' | 'agents'>('kern');
+  const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLoading, setIsLoading] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const sharedUrl = params.get('url') || params.get('text');
@@ -243,6 +245,14 @@ export default function App() {
     handleAnalyze,
     handleFileUpload
   } = useSeeds(showNotification, surrealStatus, setLogs);
+
+  const {
+    agents,
+    logs: agentLogs,
+    goal: agentGoal,
+    loading: agentsLoading,
+    createGoal: createAgentGoal
+  } = useAgents();
 
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isOperativeStatusCollapsed, setIsOperativeStatusCollapsed] = useState(true);
@@ -2188,10 +2198,10 @@ export default function App() {
               MAP
             </button>
             <button 
-              onClick={() => setActiveView('live')}
+              onClick={() => setIsLiveActive(true)}
               className={cn(
                 "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
-                activeView === 'live' 
+                isLiveActive 
                   ? "bg-red-500 text-white shadow-lg shadow-red-500/20" 
                   : "text-slate-500 hover:text-slate-300"
               )}
@@ -2312,7 +2322,13 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="flex-1 flex flex-col h-full overflow-hidden"
             >
-              <AgentDashboard />
+              <AgentDashboard 
+                agents={agents}
+                logs={agentLogs}
+                goal={agentGoal}
+                loading={agentsLoading}
+                onCreateGoal={createAgentGoal}
+              />
             </motion.div>
           )}
 
@@ -2933,7 +2949,7 @@ export default function App() {
       {/* Mobile Live FAB */}
       <div className="lg:hidden fixed bottom-6 right-6 z-[90]">
         <button 
-          onClick={() => setActiveView('live')}
+          onClick={() => setIsLiveActive(true)}
           className="w-14 h-14 bg-red-500 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all border-4 border-dark"
         >
           <Activity className="w-6 h-6 animate-pulse" />
@@ -2963,14 +2979,19 @@ export default function App() {
 
           {/* Live Mode Modal */}
           <AnimatePresence>
-            {activeView === 'live' && (
+            {isLiveActive && (
               <LiveMode 
                 analyzedItems={analyzedItems} 
                 dailyIntels={dailyIntels}
                 logs={logs}
-                onClose={() => {
-                  setActiveView('kern');
+                agents={agents}
+                onClose={(targetView) => {
+                  if (targetView) setActiveView(targetView);
+                  else setIsLiveActive(false);
                 }} 
+                onSwitchView={(target) => {
+                  setActiveView(target);
+                }}
                 onSaveTranscript={handleSaveTranscript}
                 onSaveItem={handleLiveSaveItem}
                 onSaveWeeklyTask={handleLiveSaveWeeklyTask}
