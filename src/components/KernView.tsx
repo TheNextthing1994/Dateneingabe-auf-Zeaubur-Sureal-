@@ -298,7 +298,7 @@ export function KernView({
               <div className="flex items-center gap-2 p-2 bg-white/[0.02] border border-white/5 rounded-xl cursor-pointer hover:bg-white/[0.05] transition-all" onClick={() => setIsChatCollapsed(false)}>
                 <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <p className="text-[10px] text-slate-500 font-medium truncate">
-                  Letzte Nachricht: {logs.filter(l => l.sender !== 'System').slice(-1)[0].text.substring(0, 30)}...
+                  Letzte Nachricht: {logs.filter(l => l.sender !== 'System').slice(-1)[0]?.text?.substring(0, 30) || '...'}
                 </p>
               </div>
             )}

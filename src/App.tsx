@@ -1067,7 +1067,7 @@ export default function App() {
     setAnalyzedItems(prev => [...prev, newNode]);
     // We'll rely on the useMemo or keyword matching for now, 
     // or we can add a keyword to ensure a connection.
-    newNode.text += ` ${analyzedItems.find(i => i.id === nodeId)?.text.split(' ')[0] || ''}`;
+    newNode.text += ` ${analyzedItems.find(i => i.id === nodeId)?.text?.split(' ')?.[0] || ''}`;
   };
 
   const handleTakeToMission = (item: AnalyzedItem) => {
@@ -1640,6 +1640,8 @@ export default function App() {
           // Sort by timestamp to get the latest
           const sortedMissions = [...missions].sort((a, b) => b.timestamp - a.timestamp);
           const latestMission = sortedMissions[0];
+          
+          if (!latestMission) return;
           
           const todayStr = new Date().toISOString().split('T')[0];
           const tomorrow = new Date();

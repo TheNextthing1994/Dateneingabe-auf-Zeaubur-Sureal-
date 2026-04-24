@@ -858,9 +858,12 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       setIsScreenSharing(true);
       
       // Stop sharing if user clicks "Stop sharing" in browser UI
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-      };
+      const videoTracks = stream.getVideoTracks();
+      if (videoTracks.length > 0) {
+        videoTracks[0].onended = () => {
+          stopScreenShare();
+        };
+      }
 
       // Start capturing frames if session is active
       if (status === 'active' && sessionRef.current) {
@@ -1440,7 +1443,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                         )}
                         title={`${agent.role}: ${agent.status}`}
                       >
-                        {agent.role[0]}
+                        {agent.role?.[0] || '?'}
                       </div>
                     ))}
                     {agents.length > 3 && (
