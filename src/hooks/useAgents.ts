@@ -2,13 +2,22 @@ import { useState, useEffect } from 'react';
 import { surrealService } from '../services/surrealService';
 import { Agent, AgentLog, AgentGoal } from '../types';
 
-export function useAgents() {
+export function useAgents(surrealStatus: string) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [logs, setLogs] = useState<AgentLog[]>([]);
   const [goal, setGoal] = useState<AgentGoal | null>(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    if (surrealStatus === 'disconnected') {
+      setLoading(false);
+    }
+  }, [surrealStatus]);
+
   const fetchInitialData = async () => {
+    if (surrealStatus !== 'connected') return;
+    setLoading(true);
+    
     try {
       const fetchedAgents = await surrealService.getAgents();
       const fetchedLogs = await surrealService.getAgentLogs();
@@ -42,50 +51,52 @@ export function useAgents() {
   };
 
   useEffect(() => {
-    fetchInitialData();
+    if (surrealStatus === 'connected') {
+      fetchInitialData();
 
-    let logSubscription: any;
-    let agentSubscription: any;
-    let goalSubscription: any;
+      let logSubscription: any;
+      let agentSubscription: any;
+      let goalSubscription: any;
 
-    const setupSubscriptions = async () => {
-      try {
-        logSubscription = await surrealService.subscribe('agent_logs', (action, result) => {
-          if (action === 'CREATE') {
-            setLogs(prev => [result, ...prev].slice(0, 50));
-          }
-        });
+      const setupSubscriptions = async () => {
+        try {
+          logSubscription = await surrealService.subscribe('agent_logs', (action, result) => {
+            if (action === 'CREATE') {
+              setLogs(prev => [result, ...prev].slice(0, 50));
+            }
+          });
 
-        agentSubscription = await surrealService.subscribe('agents', (action, result) => {
-          if (action === 'UPDATE' || action === 'CREATE') {
-            setAgents(prev => {
-              const index = prev.findIndex(a => a.id === result.id.toString());
-              if (index !== -1) {
-                const newAgents = [...prev];
-                newAgents[index] = { ...result, id: result.id.toString() };
-                return newAgents;
-              }
-              return [...prev, { ...result, id: result.id.toString() }].sort((a,b) => a.role === 'CEO' ? -1 : 1);
-            });
-          }
-        });
+          agentSubscription = await surrealService.subscribe('agents', (action, result) => {
+            if (action === 'UPDATE' || action === 'CREATE') {
+              setAgents(prev => {
+                const index = prev.findIndex(a => a.id === result.id.toString());
+                if (index !== -1) {
+                  const newAgents = [...prev];
+                  newAgents[index] = { ...result, id: result.id.toString() };
+                  return newAgents;
+                }
+                return [...prev, { ...result, id: result.id.toString() }].sort((a,b) => a.role === 'CEO' ? -1 : 1);
+              });
+            }
+          });
 
-        goalSubscription = await surrealService.subscribe('agent_goals', (action, result) => {
-          if (action === 'CREATE') {
-            setGoal({ ...result, id: result.id.toString() });
-          }
-        });
-      } catch (err) {
-        console.warn('Subscription failed, real-time might be limited:', err);
-      }
-    };
+          goalSubscription = await surrealService.subscribe('agent_goals', (action, result) => {
+            if (action === 'CREATE') {
+              setGoal({ ...result, id: result.id.toString() });
+            }
+          });
+        } catch (err) {
+          console.warn('Subscription failed, real-time might be limited:', err);
+        }
+      };
 
-    setupSubscriptions();
+      setupSubscriptions();
 
-    return () => {
-      // SurrealDB SDK 3.0 subscription cleanup usually handled by close or specific unsub
-    };
-  }, []);
+      return () => {
+        // SurrealDB SDK 3.0 subscription cleanup usually handled by close or specific unsub
+      };
+    }
+  }, [surrealStatus]);
 
   const createGoal = async (text: string) => {
     await surrealService.saveAgentGoal(text);

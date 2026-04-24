@@ -252,7 +252,7 @@ export default function App() {
     goal: agentGoal,
     loading: agentsLoading,
     createGoal: createAgentGoal
-  } = useAgents();
+  } = useAgents(surrealStatus);
 
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isOperativeStatusCollapsed, setIsOperativeStatusCollapsed] = useState(true);

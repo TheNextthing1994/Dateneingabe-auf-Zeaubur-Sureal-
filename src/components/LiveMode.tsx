@@ -952,12 +952,41 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     });
   };
 
-  const handleLiveChatSubmit = (e: React.FormEvent) => {
+  const handleLiveChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!liveChatInput.trim() || !sessionRef.current || status !== 'active') return;
 
     const text = liveChatInput.trim();
     
+    // YouTube Detection
+    const youtubeMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    
+    if (youtubeMatch) {
+      const videoUrl = youtubeMatch[0];
+      setLiveChatInput('');
+      addProcessLog('info', `YouTube Link erkannt: ${videoUrl}. Starte Video-Analyse...`, 'system');
+      
+      try {
+        const videoService = (await import('../services/videoAnalysisService')).videoAnalysisService;
+        
+        const response = await videoService.analyzeVideo(
+          videoUrl,
+          "Analysiere dieses Video im Kontext unserer aktuellen Live-Session.",
+          (log) => addProcessLog('info', log, 'system')
+        );
+
+        if (onMessage) onMessage('D.T. Kern', response);
+        if (sessionRef.current) {
+          sessionRef.current.sendRealtimeInput({
+            text: `[YouTube Video Analyse]: ${response}`
+          });
+        }
+      } catch (err) {
+        addProcessLog('error', 'Video-Analyse fehlgeschlagen.', 'system');
+      }
+      return;
+    }
+
     // Send to Gemini Live
     sessionRef.current.sendRealtimeInput({
       text: text
