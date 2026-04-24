@@ -46,15 +46,21 @@ export class VideoAnalysisService {
           const transcriptRes = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(youtubeUrl)}`);
           if (transcriptRes.ok) {
             const data = await transcriptRes.json();
-            if (data.transcript) {
+            if (data.success) {
               contextData = data.transcript;
-              onLog?.(`Erfolgreich: ${data.parts > 0 ? `Transkript mit ${data.parts} Teilen` : "Metadaten (Titel/Beschreibung)"} geladen.`);
+              if (data.source === 'transcript') {
+                onLog?.(`Transkript erfolgreich geladen (${data.parts} Segmente).`);
+              } else {
+                onLog?.(`Transkript nicht verfügbar. Nutze Video-Metadaten (${data.title || "Unbekannt"}).`);
+              }
+            } else {
+              onLog?.("HINWEIS: Weder Transkript noch Metadaten gefunden. Gemini nutzt visuelle Analyse via URL.");
             }
           } else {
-            onLog?.("WARNUNG: Konnte Transkript nicht laden. Nutze nur URL-Kontext.");
+            onLog?.("WARNUNG: Server-Fehler beim Abrufen der Video-Daten.");
           }
         } catch (fetchErr) {
-          onLog?.("WARNUNG: Fehler beim Abrufen des Transkripts. Nutze nur URL-Kontext.");
+          onLog?.("WARNUNG: Verbindung zum Transkript-Service fehlgeschlagen.");
         }
 
         parts.push({ fileData: { mimeType: 'video/youtube', fileUri: youtubeUrl } });

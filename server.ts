@@ -42,54 +42,60 @@ async function startServer() {
         transcript: fullText,
         parts: transcript.length,
         videoId,
-        source: 'transcript'
+        source: 'transcript',
+        success: true
       });
     } catch (error: any) {
       const errorMessage = error.message || String(error);
-      console.warn(`[API] Transcript fetch failed for ${videoId}:`, errorMessage);
+      const isTranscriptDisabled = errorMessage.includes('Transcript is disabled') || errorMessage.includes('No transcripts are available');
+      
+      if (isTranscriptDisabled) {
+        console.log(`[API] Transcript is disabled for ${videoId}. Switching to metadata fallback...`);
+      } else {
+        console.warn(`[API] Transcript fetch error for ${videoId}:`, errorMessage);
+      }
       
       // Fallback: Try to get metadata (Title/Description)
       try {
-        console.log("[API] Transkript deaktiviert. Versuche Metadaten-Extraktion...");
         const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
           }
         });
         const html = await response.text();
         
         const titleMatch = html.match(/<title>(.*?)<\/title>/);
-        const title = titleMatch ? titleMatch[1].replace(' - YouTube', '') : 'Unbekannter Titel';
+        const title = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : 'YouTube Video';
         
-        // Better description extraction
         let description = '';
         const descriptionMatch = html.match(/"shortDescription":"(.*?)"/);
         if (descriptionMatch) {
           description = descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
         } else {
-          // Fallback regex for description
           const metaDescMatch = html.match(/meta name="description" content="(.*?)"/);
-          description = metaDescMatch ? metaDescMatch[1] : 'Keine Beschreibung gefunden.';
+          description = metaDescMatch ? metaDescMatch[1] : '';
         }
 
-        const reason = errorMessage.includes('disabled') ? 'deaktiviert' : 'nicht verfügbar';
-
-        console.log(`[API] Metadata fallback successful for ${videoId}`);
+        console.log(`[API] Metadata fallback successful for ${videoId}: "${title}"`);
         return res.json({ 
-          transcript: `TITEL: ${title}\n\nBESCHREIBUNG: ${description}\n\n[HINWEIS: Das Transkript ist für dieses Video ${reason}. Nutze diese Metadaten für die Analyse.]`,
+          transcript: `TITEL: ${title}\n\nBESCHREIBUNG: ${description}\n\n[HINWEIS: Das Transkript ist für dieses Video nicht verfügbar. Nutze Metadaten und visuelle Analyse.]`,
           parts: 0,
           isMetadataOnly: true,
           title,
           videoId,
-          source: 'metadata'
+          source: 'metadata',
+          success: true
         });
       } catch (fallbackErr) {
         console.error(`[API] All fetch attempts failed for ${videoId}:`, fallbackErr);
-        res.status(500).json({ 
+        res.status(200).json({ 
+          transcript: "Keine Transkript- oder Metadaten verfügbar.",
           error: 'Failed to fetch any data from YouTube', 
           details: errorMessage,
-          videoId
+          videoId,
+          success: false,
+          isMetadataOnly: false,
+          parts: 0
         });
       }
     }
