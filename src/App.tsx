@@ -107,6 +107,7 @@ import { useChat } from './hooks/useChat';
 import { BoardCard } from './components/BoardCard';
 import { VideoAnalyst } from './components/VideoAnalyst';
 import { IntelFeed } from './components/IntelFeed';
+import { AgentDashboard } from './components/agent-hierarchy/AgentDashboard';
 import { DailyIntel } from './types';
 import { LoadingScreen } from './components/LoadingScreen';
 import { BriefingOverlay } from './components/BriefingOverlay';
@@ -205,7 +206,7 @@ interface MapLink extends d3.SimulationLinkDatum<MapNode> {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video'>('kern');
+  const [activeView, setActiveView] = useState<'kern' | 'vault' | 'map' | 'live' | 'video' | 'agents'>('kern');
   const [isLoading, setIsLoading] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const sharedUrl = params.get('url') || params.get('text');
@@ -2208,6 +2209,17 @@ export default function App() {
             >
               VIDEO
             </button>
+            <button 
+              onClick={() => setActiveView('agents')}
+              className={cn(
+                "px-3 sm:px-5 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all",
+                activeView === 'agents' 
+                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20" 
+                  : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              HIERARCHY
+            </button>
           </div>
         </div>
 
@@ -2290,6 +2302,18 @@ export default function App() {
               isOperativeStatusCollapsed={isOperativeStatusCollapsed}
               setIsOperativeStatusCollapsed={setIsOperativeStatusCollapsed}
             />
+          )}
+
+          {activeView === 'agents' && (
+            <motion.div
+              key="agents"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex flex-col h-full overflow-hidden"
+            >
+              <AgentDashboard />
+            </motion.div>
           )}
 
         {activeView === 'vault' && (

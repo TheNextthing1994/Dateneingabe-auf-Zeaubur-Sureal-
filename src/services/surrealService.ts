@@ -570,6 +570,91 @@ class SurrealService {
       return [];
     }
   }
+
+  /**
+   * AGENT HIERARCHY METHODS
+   */
+  async getAgents(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM agents ORDER BY role ASC');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      return records.map(item => ({ ...item, id: item.id.toString() }));
+    } catch (err) {
+      console.error('Error fetching agents:', err);
+      return [];
+    }
+  }
+
+  async updateAgent(id: string, data: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = id.includes(':') ? id : `agents:${id}`;
+    return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+  }
+
+  async saveAgentLog(log: any) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const id = `agent_logs:${Math.random().toString(36).substring(7)}`;
+    return await (this.db as any).create(new StringRecordId(id), {
+      ...log,
+      timestamp: log.timestamp || Date.now()
+    });
+  }
+
+  async getAgentLogs(): Promise<any[]> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM agent_logs ORDER BY timestamp DESC LIMIT 50');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      return records.map(item => ({ ...item, id: item.id.toString() }));
+    } catch (err) {
+      console.error('Error fetching agent logs:', err);
+      return [];
+    }
+  }
+
+  async saveAgentGoal(text: string) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const id = `agent_goals:${Math.random().toString(36).substring(7)}`;
+    return await (this.db as any).create(new StringRecordId(id), {
+      text,
+      status: 'Active',
+      timestamp: Date.now()
+    });
+  }
+
+  async getLatestGoal(): Promise<any | null> {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    try {
+      const results = await (this.db as any).query('SELECT * FROM agent_goals ORDER BY timestamp DESC LIMIT 1');
+      let records: any[] = [];
+      if (Array.isArray(results)) {
+        records = results[0]?.result || results[0] || [];
+      } else if (results && typeof results === 'object') {
+        records = (results as any).result || [];
+      }
+      return records[0] ? { ...records[0], id: records[0].id.toString() } : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async subscribe(table: string, callback: (action: string, result: any) => void) {
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    return await (this.db as any).subscribe(table, (data: any) => {
+      callback(data.action, data.result);
+    });
+  }
 }
 
 export const surrealService = new SurrealService();

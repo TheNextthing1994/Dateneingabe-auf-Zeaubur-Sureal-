@@ -113,6 +113,35 @@ export interface WeeklyTask {
   timestamp: number;
 }
 
+export type AgentRole = 'CEO' | 'Vorarbeiter' | 'Fach-Agent';
+export type AgentStatus = 'Idle' | 'Working' | 'Done' | 'Error';
+
+export interface Agent {
+  id: string;
+  role: AgentRole;
+  name: string;
+  status: AgentStatus;
+  budget: number; // in Cent/Tokens
+  currentTask?: string;
+}
+
+export interface AgentLog {
+  id: string;
+  agentId: string;
+  agentName: string;
+  agentRole: AgentRole;
+  message: string;
+  timestamp: number;
+  type: 'thought' | 'action' | 'communication';
+}
+
+export interface AgentGoal {
+  id: string;
+  text: string;
+  status: 'Active' | 'Completed' | 'Failed';
+  timestamp: number;
+}
+
 export interface MapNode extends SimulationNodeDatum {
   id: string;
   item: AnalyzedItem;

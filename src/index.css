@@ -127,6 +127,11 @@
   100% { transform: translateY(100%); }
 }
 
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 .scanline {
   width: 100%;
   height: 100px;
