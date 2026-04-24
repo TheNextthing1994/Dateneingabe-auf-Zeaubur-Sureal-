@@ -101,53 +101,62 @@ export function useAgents(surrealStatus: string) {
   const createGoal = async (text: string) => {
     await surrealService.saveAgentGoal(text);
     
-    // Simulate Agent activity
+    // Toolmaster (Scout Agent) initiates research
     setTimeout(async () => {
       await surrealService.saveAgentLog({
-        agentName: 'Paperclip CEO',
-        agentRole: 'CEO',
-        message: `Strategisches Ziel empfangen: "${text}". Initiiere Analyse-Phase.`,
-        type: 'thought'
+        agentName: 'Scout Agent',
+        agentRole: 'Fach-Agent',
+        message: `Zentraldirektive empfangen: "${text}". Starte sofortige Internetrecherche nach den neuesten Tools und Informationen...`,
+        type: 'action'
       });
 
-      // Update CEO to Working
-      const ceo = agents.find(a => a.role === 'CEO');
-      if (ceo) {
-        await surrealService.updateAgent(ceo.id, { 
-          status: 'Working', 
-          currentTask: 'Delegiert Mission an Vorarbeiter',
-          budget: ceo.budget + 12
+      const scout = agents.find(a => a.name === 'Scout Agent');
+      if (scout) {
+        await surrealService.updateAgent(scout.id, {
+          status: 'Working',
+          currentTask: 'Live-Recherche läuft...',
+          budget: scout.budget + 25
         });
       }
 
+      // After research, CEO processes
       setTimeout(async () => {
         await surrealService.saveAgentLog({
-          agentName: 'Lead Architect',
-          agentRole: 'Vorarbeiter',
-          message: `Auftrag erhalten. Erstelle technischen Schlachtplan für "${text.slice(0, 30)}...".`,
+          agentName: 'Paperclip CEO',
+          agentRole: 'CEO',
+          message: `Recherche-Ergebnisse vom Scout erhalten. Analysiere Marktpotenzial für "${text.slice(0, 30)}...".`,
           type: 'thought'
         });
 
-        const foreman = agents.find(a => a.role === 'Vorarbeiter');
-        if (foreman) {
-          await surrealService.updateAgent(foreman.id, { 
+        const ceo = agents.find(a => a.role === 'CEO');
+        if (ceo) {
+          await surrealService.updateAgent(ceo.id, { 
             status: 'Working', 
-            currentTask: 'Erstellt Architektur-Blueprint',
-            budget: foreman.budget + 45
+            currentTask: 'Strategische Evaluation',
+            budget: ceo.budget + 15
           });
         }
-        
-        setTimeout(async () => {
-             await surrealService.saveAgentLog({
-                agentName: 'Scout Agent',
-                agentRole: 'Fach-Agent',
-                message: `Suche nach Markt-Daten und Best Practices für die Umsetzung.`,
-                type: 'communication'
-              });
-        }, 3000);
 
+        // Delegating to Vorarbeiter
+        setTimeout(async () => {
+          await surrealService.saveAgentLog({
+            agentName: 'Lead Architect',
+            agentRole: 'Vorarbeiter',
+            message: `Technische Machbarkeit wird geprüft. Tools wurden in den Blueprint integriert.`,
+            type: 'communication'
+          });
+
+          const foreman = agents.find(a => a.role === 'Vorarbeiter');
+          if (foreman) {
+            await surrealService.updateAgent(foreman.id, { 
+              status: 'Working', 
+              currentTask: 'Blueprint-Finalisierung',
+              budget: foreman.budget + 50
+            });
+          }
+        }, 3000);
       }, 4000);
-    }, 1000);
+    }, 500);
   };
 
   return { agents, logs, goal, loading, createGoal };

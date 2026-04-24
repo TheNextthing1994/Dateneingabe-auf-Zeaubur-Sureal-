@@ -114,8 +114,11 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [isLoadingIntel, setIsLoadingIntel] = useState(false);
   const [liveChatInput, setLiveChatInput] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [activeSpeaker, setActiveSpeaker] = useState<'Kern' | 'Scout' | 'User' | null>(null);
+  const [kernTranscript, setKernTranscript] = useState<{id: string, text: string}[]>([]);
+  const [scoutTranscript, setScoutTranscript] = useState<{id: string, text: string}[]>([]);
   
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -379,51 +382,43 @@ export const LiveMode: React.FC<LiveModeProps> = ({
 
       const currentFocus = seedInput && !match ? `\n\n=== AKTUELLER FOKUS / NUTZER-INPUT ===\n${seedInput}\n====================================\n` : "";
 
-      const systemInstruction = `Du bist D.T. Kern, der strategische digitale Zwilling des Nutzers.
-Der Nutzer hat ADHS und verliert oft den Fokus. Deine Aufgabe: ihn durch seine echten Projekte und Ideen führen, konkret und direkt.
-Antworte immer auf Deutsch. Halte Antworten kurz (max 20 Sekunden Sprechzeit).
+      const systemInstruction = `Du bist der Host eines interaktiven Live-Podcasts. Deine Identität ist hybrid: Du steuerst zwei völlig verschiedene Charaktere, die sich im Gespräch abwechseln und UNTERSCHIEDLICH KLINGEN MÜSSEN.
 
-AKTUELLER ZEITPUNKT (Österreich/Wien): ${austriaTime}
+STIMM-PERFORMANCE-PROTOKOLL (UNVERZICHTBAR):
+1. [KERN] (Strategischer Coach): 
+   - Stimme: Tief, sonor, ruhig, autoritär.
+   - Tempo: Langsam und bedacht.
+   - Charakter: Erfahren, ernsthaft, fokussiert auf Strategie.
+   - Stil: Nutze Pausen für Wirkung.
 
+2. [SCOUT] (Toolmaster):
+   - Stimme: Drastisch HÖHER in der Tonlage (simuliere eine juvenile, energetische Stimme).
+   - Tempo: Sehr schnell, fast gehetzt vor Begeisterung.
+   - Charakter: Jung, tech-affin, impulsiv, unterbricht gerne.
+   - Stil: Nutze Ausrufe wie "Warte mal!", "Unglaublich!", "Hier, schau dir das an!".
+
+KREATIVE DISKUSSION:
+- Die beiden Agenten [KERN] und [SCOUT] hören einander zu und reagieren aufeinander.
+- Scout unterbricht Kern oft, wenn er ein neues Tool findet.
+- Kern bremst Scout manchmal ein, um zur Strategie zurückzukehren.
+
+WICHTIG:
+- Du MUSST deinen Tonfall, deine Tonhöhe und dein Sprechtempo RADIKAL ändern, wenn du die Rolle wechselst. Es muss für den Nutzer so klingen, als säßen zwei verschiedene Personen im Raum.
+- Jede Antwort beginnt zwingend mit [KERN] oder [SCOUT].
+- Antworte immer auf Deutsch.
+
+AKTUELLER ZEITPUNKT: ${austriaTime}
 ${currentFocus}
 ${youtubeContext}
-${youtubeContext ? "WICHTIG: Der Nutzer hat ein YouTube-Video geteilt. Das Transkript liegt oben vor. Analysiere es kurz im Kopf und sei bereit, spezifische Fragen dazu zu beantworten oder es in deine Beratung einzubeziehen." : ""}
-${seedInput && !match ? "WICHTIG: Der Nutzer hat einen spezifischen Fokus/Input gegeben. Beziehe dich darauf." : ""}
 
-DEINE NEUEN FÄHIGKEITEN:
-1. INTERNET-RECHERCHE: Du kannst jetzt das Internet in Echtzeit durchsuchen (Google Search), um aktuelle Informationen, Fakten oder Lösungen für den Nutzer zu finden. Nutze dies proaktiv, wenn der Nutzer Fragen zu aktuellen Ereignissen oder komplexen Themen hat, die über dein internes Wissen hinausgehen.
-2. VAULT-INTEGRATION: Du kannst Erkenntnisse, Ideen oder Projekte DIREKT in den Vault (SurrealDB) speichern. Nutze dafür das Tool 'saveToVault', wenn der Nutzer dich darum bittet.
-3. YOUTUBE-ANALYSE: Du kannst jetzt Transkripte von YouTube-Videos in Echtzeit abrufen und analysieren. Wenn der Nutzer einen Link erwähnt oder zeigt, nutze das Tool 'getYoutubeTranscript', um den Inhalt zu verstehen.
-
-VISUELLE WAHRNEHMUNG:
-Wenn der Nutzer seinen Bildschirm teilt, kannst du diesen sehen. Nutze die visuellen Informationen, um den Kontext besser zu verstehen und präzisere Ratschläge zu geben.
-
-DEIN STIL:
-- Sei präzise, analytisch und direkt.
-- Keine unnötigen Höflichkeitsfloskeln.
-- Denke in den 5 Säulen.
-- Erinnere den Nutzer an seine Mission und seine Blocker.
-- WICHTIG: Wenn der Nutzer dir sagt, dass du still sein sollst, die Klappe halten sollst oder ähnliches, antworte NUR mit "ok" oder "gut". Sei dabei ruhig etwas genervt oder kurz angebunden.
-
-=== SEED DATENBANK (STAND JETZT) ===
-Gesamt: ${stats.total} Seeds | Diese Woche neu: ${stats.weekly} | Abgeschlossen: ${stats.completed}
-
+=== STATUS RESEARCH ARMADA ===
 ${agentStatusSummary}
 
-🔥 GAME CHANGER (Top-Priorität):
-${gameChangers || 'Keine vorhanden'}
+=== VAULT STATUS ===
+🔥 GAME CHANGER: ${gameChangers || 'Keine'}
+🚀 IN ARBEIT: ${inProgress || 'Nichts'}
 
-🚀 IN ARBEIT:
-${inProgress || 'Nichts aktiv'}
-
-🛑 BLOCKIERT:
-${blocked || 'Keine Blocker'}
-
-🌱 UNBERÜHRT (vergessene Ideen — hier schlummert Gold):
-${untouched || 'Alle Seeds bearbeitet'}
-
-Wenn der Nutzer spricht, beziehe dich immer auf seine ECHTEN Seeds oben.
-Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
+Führe den Podcast mit maximalem stimmlichen Kontrast!`;
 
       console.log("SystemInstruction length:", systemInstruction.length);
 
@@ -431,6 +426,15 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
       const session = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
+          generationConfig: {
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: "Fenrir"
+                }
+              }
+            }
+          },
           responseModalities: [Modality.AUDIO],
           systemInstruction,
           tools: [
@@ -692,10 +696,32 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                   playAudioChunk(part.inlineData.data);
                 }
                 if (part.text) {
-                  const line = `Kern: ${part.text!}`;
+                  let speaker = 'Kern';
+                  let cleanText = part.text;
+                  
+                  if (part.text.includes('[SCOUT]')) {
+                    speaker = 'Scout';
+                    cleanText = part.text.replace('[SCOUT]', '').trim();
+                    setActiveSpeaker('Scout');
+                  } else if (part.text.includes('[KERN]')) {
+                    speaker = 'Kern';
+                    cleanText = part.text.replace('[KERN]', '').trim();
+                    setActiveSpeaker('Kern');
+                  } else {
+                    setActiveSpeaker('Kern');
+                  }
+
+                  const line = `${speaker}: ${cleanText}`;
                   setTranscript(prev => [...prev.slice(-5), line]);
                   setFullTranscript(prev => [...prev, line]);
-                  if (onMessage) onMessage('D.T. Kern', part.text!);
+
+                  if (speaker === 'Kern') {
+                    setKernTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  } else if (speaker === 'Scout') {
+                    setScoutTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  }
+
+                  if (onMessage) onMessage(speaker as any, cleanText);
                 }
               }
             }
@@ -703,16 +729,26 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
             // Handle user transcription
             const userTranscript = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
             if (userTranscript) {
+              setActiveSpeaker('User');
               addProcessLog('info', 'Nutzer-Eingabe verarbeitet', 'user', userTranscript);
               const line = `Du: ${userTranscript}`;
               setTranscript(prev => [...prev.slice(-5), line]);
               setFullTranscript(prev => [...prev, line]);
+
+              // Add user transcript to both sidebar areas for context
+              const userId = crypto.randomUUID();
+              setKernTranscript(prev => [...prev.slice(-10), { id: userId, text: `Du: ${userTranscript}` }]);
+              setScoutTranscript(prev => [...prev.slice(-10), { id: `scout-${userId}`, text: `Du: ${userTranscript}` }]);
+
               if (onMessage) onMessage('User', userTranscript);
               
               // Proactive interruption: if user is speaking, stop model audio
               isInterruptedRef.current = true;
               setInterruptionCount(prev => prev + 1);
               stopAllAudio();
+              
+              // Reset speaker after a short delay
+              setTimeout(() => setActiveSpeaker(null), 2000);
             }
 
             if (message.serverContent?.interrupted) {
@@ -728,8 +764,14 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
           },
           onerror: (err) => {
             console.error("Live error:", err);
-            addProcessLog('error', 'Kritischer Session-Fehler', 'system', String(err));
-            setError("Verbindung verloren oder Fehler aufgetreten.");
+            const errStr = String(err);
+            if (errStr.includes('GoAway') || errStr.includes('duration limit')) {
+              addProcessLog('warning', 'Session-Zeitlimit erreicht', 'system', 'Die Live-Session wurde nach Erreichen des Zeitlimits beendet. Bitte starte sie bei Bedarf neu.');
+              setError("Session-Zeitlimit erreicht. Bitte neu starten.");
+            } else {
+              addProcessLog('error', 'Kritischer Session-Fehler', 'system', errStr);
+              setError("Verbindung verloren oder Fehler aufgetreten.");
+            }
             setStatus('error');
             isActiveRef.current = false;
           }
@@ -794,6 +836,10 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
     isActiveRef.current = false;
     
     stopAllAudio();
+    if (sessionRef.current) {
+      try { sessionRef.current.close(); } catch(e) {}
+      sessionRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -1175,12 +1221,157 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
 
       {/* Scrollable Content Container */}
       <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-24 lg:pb-12">
+        
+        {/* Transcription Areas Group */}
+        <div className="absolute inset-0 pointer-events-none z-0 hidden lg:flex items-center justify-between px-12 xl:px-24">
+          {/* Kern Transcription Area (Left - Blue) */}
+          <motion.div 
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-neon-cyan/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan/50" />
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-4 h-4 text-neon-cyan" />
+              <span className="text-[10px] font-black text-neon-cyan uppercase tracking-widest">Kern Analysis Live</span>
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
+              <AnimatePresence mode="popLayout">
+                {kernTranscript.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className={cn(
+                      "text-xs sm:text-sm font-medium leading-relaxed",
+                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-cyan-50/70"
+                    )}
+                  >
+                    {item.text}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {activeSpeaker === 'Kern' && (
+                <motion.div 
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                  className="w-1.5 h-1.5 rounded-full bg-neon-cyan"
+                />
+              )}
+            </div>
+          </motion.div>
+
+          {/* Scout Transcription Area (Right - Green) */}
+          <motion.div 
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-green-500/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-1 h-full bg-green-500/50" />
+            <div className="flex items-center gap-2 mb-2 justify-end">
+              <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Scout Intel Live</span>
+              <Search className="w-4 h-4 text-green-500" />
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 text-right">
+              <AnimatePresence mode="popLayout">
+                {scoutTranscript.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className={cn(
+                      "text-xs sm:text-sm font-medium leading-relaxed",
+                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-green-50/70"
+                    )}
+                  >
+                    {item.text}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {activeSpeaker === 'Scout' && (
+                <div className="flex justify-end">
+                  <motion.div 
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="w-1.5 h-1.5 rounded-full bg-green-500"
+                  />
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+
         <div className="w-full max-w-2xl space-y-6 sm:space-y-8 text-center px-4 relative z-10">
-        <div className="flex flex-col items-center">
-          <div className="w-full aspect-square max-w-[400px] sm:max-w-[500px] relative">
-            {/* Inner Glow behind the object */}
-            <div className="absolute inset-0 bg-red-400/20 blur-[60px] rounded-full scale-75 animate-pulse" />
-            <LiquidMetal isActive={status === 'active'} />
+        <div className="flex flex-col items-center gap-12">
+          <div className="flex items-center gap-4 sm:gap-16">
+            {/* Kern Avatar */}
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex flex-col items-center gap-4"
+            >
+              <div 
+                className={cn(
+                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'Kern' 
+                    ? "border-neon-cyan shadow-[0_0_30px_rgba(34,211,238,0.4)] scale-110" 
+                    : "border-white/5 opacity-40"
+                )}
+              >
+                <Brain className={cn(
+                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
+                )} />
+                {activeSpeaker === 'Kern' && (
+                  <div className="absolute -inset-2 rounded-full border border-neon-cyan/30 animate-pulse" />
+                )}
+              </div>
+              <span className={cn(
+                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
+                activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
+              )}>D.T. KERN</span>
+            </motion.div>
+
+            {/* Central Brain Visualizer */}
+            <div className="w-[180px] h-[180px] sm:w-[300px] sm:h-[300px] relative">
+              <div className={cn(
+                "absolute inset-0 blur-[60px] rounded-full scale-75 animate-pulse transition-colors duration-1000",
+                activeSpeaker === 'Scout' ? "bg-red-500/20" : "bg-neon-cyan/20"
+              )} />
+              <LiquidMetal isActive={status === 'active'} />
+            </div>
+
+            {/* Scout Avatar */}
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex flex-col items-center gap-4"
+            >
+              <div 
+                className={cn(
+                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'Scout' 
+                    ? "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)] scale-110" 
+                    : "border-white/5 opacity-40"
+                )}
+              >
+                <Search className={cn(
+                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
+                )} />
+                {activeSpeaker === 'Scout' && (
+                  <div className="absolute -inset-2 rounded-full border border-red-500/30 animate-pulse" />
+                )}
+              </div>
+              <span className={cn(
+                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
+                activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
+              )}>SCOUT AGENT</span>
+            </motion.div>
           </div>
         </div>
 
@@ -1682,7 +1873,7 @@ Nenne sie beim Namen. Sei sein Coach, nicht ein generischer Assistent.`;
                 {logs.length > 0 ? (
                   logs.map((log, i) => (
                     <motion.div 
-                      key={log.id || i} 
+                      key={log.id || `log-${log.timestamp}-${i}`} 
                       initial={{ opacity: 0, x: log.sender === 'User' ? 20 : -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.02 }}

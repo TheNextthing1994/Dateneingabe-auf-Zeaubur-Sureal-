@@ -25,8 +25,10 @@ export const AgentCard: React.FC<AgentCardProps> = ({ agent }) => {
     }
   };
 
+  const isSpeaking = agent.status === 'Working' && Math.random() > 0.5; // Mock speaking status for now
+
   return (
-    <div className="bg-black/40 border border-white/10 p-4 rounded-sm flex flex-col gap-4 group hover:border-red-500/30 transition-colors">
+    <div className={`bg-black/40 border p-4 rounded-sm flex flex-col gap-4 group transition-all duration-300 ${isSpeaking ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)] scale-[1.02]' : 'border-white/10 hover:border-red-500/30'}`}>
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-white/5 rounded-sm">

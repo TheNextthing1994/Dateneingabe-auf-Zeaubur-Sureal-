@@ -37,7 +37,7 @@ export const GoalInput: React.FC<GoalInputProps> = ({ onCreateGoal, currentGoal,
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter a new objective (e.g. 'Build a marketing campaign')..."
+          placeholder="Neue Direktive eingeben (z.B. 'Erstelle eine Marketing-Kampagne')..."
           className="w-full bg-black/60 border border-white/10 rounded-sm py-4 pl-4 pr-16 text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-red-500/50 transition-all font-sans text-sm"
           disabled={isProcessing}
         />
