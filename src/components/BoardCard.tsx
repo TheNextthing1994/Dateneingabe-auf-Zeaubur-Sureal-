@@ -149,14 +149,14 @@ export function BoardCard({
               navigator.clipboard.writeText(item.text);
               showNotification('In die Zwischenablage kopiert', 'info');
             }}
-            className="p-1 text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+            className="p-1 text-slate-500 hover:text-primary transition-colors lg:opacity-0 lg:group-hover:opacity-100"
             title="Kopieren"
           >
             <Copy className="w-3 h-3" />
           </button>
           <button 
             onClick={() => onDelete(item)}
-            className="p-1 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+            className="p-1 text-slate-500 hover:text-red-400 transition-colors lg:opacity-0 lg:group-hover:opacity-100"
             title="Löschen"
           >
             <Trash2 className="w-3 h-3" />

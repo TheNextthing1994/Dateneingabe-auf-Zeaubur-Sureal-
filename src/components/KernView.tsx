@@ -102,6 +102,9 @@ interface KernViewProps {
   handleExportCSV: () => void;
   isOperativeStatusCollapsed: boolean;
   setIsOperativeStatusCollapsed: (val: boolean) => void;
+  setActiveView: (view: 'kern' | 'vault' | 'live' | 'video' | 'agents' | 'prompts') => void;
+  setLibraryType: (type: string) => void;
+  setLibraryTab: (tab: 'all' | 'intel') => void;
 }
 
 export function KernView({
@@ -157,8 +160,26 @@ export function KernView({
   analyzedItems,
   handleExportCSV,
   isOperativeStatusCollapsed,
-  setIsOperativeStatusCollapsed
+  setIsOperativeStatusCollapsed,
+  setActiveView,
+  setLibraryType,
+  setLibraryTab
 }: KernViewProps) {
+  const activeProjects = analyzedItems
+    .filter(i => i.type === 'Projekt' && (i.status === 'In Arbeit' || i.status === 'Offen'))
+    .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
+    .slice(0, 3);
+
+  const topInsights = analyzedItems
+    .filter(i => i.type === 'Erkenntnis')
+    .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
+    .slice(0, 3);
+
+  const navigateToVault = (type: string) => {
+    setLibraryType(type);
+    setLibraryTab('all');
+    setActiveView('vault');
+  };
   return (
     <motion.div 
       key="kern"
@@ -861,8 +882,91 @@ export function KernView({
               </div>
             </div>
 
-            {/* Mission Billboard */}
-            <div className="2xl:col-span-1">
+            <div className="2xl:col-span-1 space-y-6">
+              {/* DT Briefing Section */}
+              <div className="p-6 bg-primary/5 border border-primary/10 rounded-3xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <Sparkles className="w-12 h-12 text-primary" />
+                </div>
+                <h3 className="text-sm font-bold text-primary uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                  <Zap className="w-4 h-4" /> DT BRIEFING
+                </h3>
+
+                {/* Aktive Projekte */}
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Aktive Projekte</span>
+                    <button 
+                      onClick={() => navigateToVault('Projekt')}
+                      className="text-[9px] text-primary hover:underline uppercase tracking-tighter"
+                    >
+                      Alle sehen
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {activeProjects.length > 0 ? activeProjects.map(p => (
+                      <button 
+                        key={p.id}
+                        onClick={() => navigateToVault('Projekt')}
+                        className="w-full text-left p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all group/item"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[11px] font-bold text-slate-200 group-hover/item:text-primary transition-colors line-clamp-1">{p.text}</span>
+                          <span className="text-[8px] px-1.5 py-0.5 bg-primary/20 text-primary rounded-md font-bold uppercase">{p.status}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary" style={{ width: `${(p.impact || 5) * 10}%` }}></div>
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-500">I:{p.impact}</span>
+                        </div>
+                      </button>
+                    )) : (
+                      <div className="text-center py-4 bg-white/[0.02] border border-dashed border-white/5 rounded-xl text-[10px] text-slate-600 uppercase italic">
+                        Keine aktiven Projekte
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Erkenntnisse */}
+                <div>
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Top Erkenntnisse</span>
+                    <button 
+                      onClick={() => navigateToVault('Erkenntnis')}
+                      className="text-[9px] text-primary hover:underline uppercase tracking-tighter"
+                    >
+                      Alle sehen
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {topInsights.length > 0 ? topInsights.map(e => (
+                      <button 
+                        key={e.id}
+                        onClick={() => navigateToVault('Erkenntnis')}
+                        className="w-full text-left p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all group/item"
+                      >
+                        <p className="text-[11px] text-slate-300 group-hover/item:text-white transition-colors line-clamp-2 italic leading-relaxed">
+                          "{e.text}"
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[8px] font-bold text-primary uppercase">#{e.area || 'General'}</span>
+                          <span className="text-[8px] text-slate-600 font-mono italic">
+                            {new Date(e.timestamp || Date.now()).toLocaleDateString('de-DE')}
+                          </span>
+                        </div>
+                      </button>
+                    )) : (
+                      <div className="text-center py-4 bg-white/[0.02] border border-dashed border-white/5 rounded-xl text-[10px] text-slate-600 uppercase italic">
+                        Noch keine Erkenntnisse
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mission Billboard (Moved inside the same 2xl:col-span-1) */}
               <section className="bg-panel/40 backdrop-blur-xl border border-white/5 rounded-3xl p-6 sm:p-8 h-full flex flex-col relative overflow-hidden group">
                 {/* Billboard Header */}
                 <div className="flex items-center justify-between mb-8 relative z-10">

@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
+import { GoogleGenAI } from "@google/genai";
 import { surrealService } from '../services/surrealService';
 import { Agent, AgentLog, AgentGoal } from '../types';
 
-export function useAgents(surrealStatus: string) {
+export function useAgents(surrealStatus: string, apiKey?: string) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [logs, setLogs] = useState<AgentLog[]>([]);
   const [goal, setGoal] = useState<AgentGoal | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const getAI = () => {
+    if (!apiKey) return null;
+    return new GoogleGenAI({ apiKey });
+  };
 
   useEffect(() => {
     if (surrealStatus === 'disconnected') {
@@ -32,7 +38,7 @@ export function useAgents(surrealStatus: string) {
         const defaults: Omit<Agent, 'id'>[] = [
           { role: 'CEO', name: 'Paperclip CEO', status: 'Idle', budget: 0 },
           { role: 'Vorarbeiter', name: 'Lead Architect', status: 'Idle', budget: 0 },
-          { role: 'Fach-Agent', name: 'Scout Agent', status: 'Idle', budget: 0 },
+          { role: 'Fach-Agent', name: 'Researcher', status: 'Idle', budget: 0 },
           { role: 'Fach-Agent', name: 'Analyst Agent', status: 'Idle', budget: 0 }
         ];
 
@@ -62,7 +68,12 @@ export function useAgents(surrealStatus: string) {
         try {
           logSubscription = await surrealService.subscribe('agent_logs', (action, result) => {
             if (action === 'CREATE') {
-              setLogs(prev => [result, ...prev].slice(0, 50));
+              const normalized = {
+                ...result,
+                id: result.id.toString(),
+                timestamp: result.timestamp || Date.now()
+              };
+              setLogs(prev => [normalized, ...prev].slice(0, 50));
             }
           });
 
@@ -101,62 +112,138 @@ export function useAgents(surrealStatus: string) {
   const createGoal = async (text: string) => {
     await surrealService.saveAgentGoal(text);
     
-    // Toolmaster (Scout Agent) initiates research
-    setTimeout(async () => {
-      await surrealService.saveAgentLog({
-        agentName: 'Scout Agent',
-        agentRole: 'Fach-Agent',
-        message: `Zentraldirektive empfangen: "${text}". Starte sofortige Internetrecherche nach den neuesten Tools und Informationen...`,
-        type: 'action'
-      });
+    // Immediate log that directive is received
+    await surrealService.saveAgentLog({
+      agentId: 'system',
+      agentName: 'System',
+      agentRole: 'CEO',
+      message: `Zentraldirektive "${text}" wird an die Agenten-Armada verteilt...`,
+      type: 'action'
+    });
 
-      const scout = agents.find(a => a.name === 'Scout Agent');
-      if (scout) {
-        await surrealService.updateAgent(scout.id, {
+    const ai = getAI();
+    let agentPlans: any = null;
+
+    if (ai) {
+      try {
+        const prompt = `
+          Du bist ein System-Koordinator für eine AI-Agenten-Armada.
+          Der CEO hat eine neue Zentraldirektive ausgegeben: "${text}"
+          
+          Wir haben 4 Haupt-Agenten:
+          1. "Researcher" (Fach-Agent): Sucht nach Informationen, Tools und Markttrends.
+          2. "Analyst Agent" (Fach-Agent): Analysiert Daten, berechnet Potenziale und Risiken.
+          3. "Lead Architect" (Vorarbeiter): Erstellt den Plan und die technische Architektur.
+          4. "Paperclip CEO" (CEO): Überwacht das Ziel und trifft finale Entscheidungen.
+
+          Generiere für jeden Agenten eine ultrakurze, professionelle "Pledge" (Zusage), was er/sie konkret leisten wird, um dieses Ziel zu erreichen.
+          Format: JSON
+          {
+            "Researcher": "Was ich tue...",
+            "Analyst": "Was ich analysiere...",
+            "Architect": "Was ich baue...",
+            "CEO": "Strategischer Fokus..."
+          }
+        `;
+        const result = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: "application/json",
+          }
+        });
+        const textResponse = result.text || "{}";
+        agentPlans = JSON.parse(textResponse);
+      } catch (err) {
+        console.warn('AI Agent Plan Generation failed:', err);
+      }
+    }
+
+    const plans = agentPlans || {
+      "Researcher": "Ich werde relevante Marktdaten und technische Benchmarks für dieses Ziel evaluieren.",
+      "Analyst": "Ich berechne die ROI-Metriken und identifiziere proaktiv Engpässe in der Umsetzung.",
+      "Architect": "Ich entwickle eine skalierbare Systemarchitektur, die diesen Anforderungen gerecht wird.",
+      "CEO": "Ich steuere die Ressourcenallokation und stelle die 100%ige Zielerreichung sicher."
+    };
+
+    // Re-fetch agents to ensure we have current IDs
+    const latestAgents = await surrealService.getAgents();
+
+    // 1. Researcher starts
+    setTimeout(async () => {
+      const researcher = latestAgents.find(a => a.name === 'Researcher');
+      if (researcher) {
+        await surrealService.saveAgentLog({
+          agentId: researcher.id,
+          agentName: 'Researcher',
+          agentRole: 'Fach-Agent',
+          message: `Direktive erhalten. Fokus: ${plans.Researcher}`,
+          type: 'action'
+        });
+        await surrealService.updateAgent(researcher.id, {
           status: 'Working',
-          currentTask: 'Live-Recherche läuft...',
-          budget: scout.budget + 25
+          currentTask: plans.Researcher,
+          budget: (researcher.budget || 0) + 25
         });
       }
 
-      // After research, CEO processes
+      // 2. Analyst follows
       setTimeout(async () => {
-        await surrealService.saveAgentLog({
-          agentName: 'Paperclip CEO',
-          agentRole: 'CEO',
-          message: `Recherche-Ergebnisse vom Scout erhalten. Analysiere Marktpotenzial für "${text.slice(0, 30)}...".`,
-          type: 'thought'
-        });
-
-        const ceo = agents.find(a => a.role === 'CEO');
-        if (ceo) {
-          await surrealService.updateAgent(ceo.id, { 
-            status: 'Working', 
-            currentTask: 'Strategische Evaluation',
-            budget: ceo.budget + 15
+        const analyst = latestAgents.find(a => a.name === 'Analyst Agent');
+        if (analyst) {
+          await surrealService.saveAgentLog({
+            agentId: analyst.id,
+            agentName: 'Analyst Agent',
+            agentRole: 'Fach-Agent',
+            message: `Datenanalyse gestartet: ${plans.Analyst}`,
+            type: 'thought'
+          });
+          await surrealService.updateAgent(analyst.id, {
+            status: 'Working',
+            currentTask: plans.Analyst,
+            budget: (analyst.budget || 0) + 15
           });
         }
 
-        // Delegating to Vorarbeiter
+        // 3. CEO processes
         setTimeout(async () => {
-          await surrealService.saveAgentLog({
-            agentName: 'Lead Architect',
-            agentRole: 'Vorarbeiter',
-            message: `Technische Machbarkeit wird geprüft. Tools wurden in den Blueprint integriert.`,
-            type: 'communication'
-          });
-
-          const foreman = agents.find(a => a.role === 'Vorarbeiter');
-          if (foreman) {
-            await surrealService.updateAgent(foreman.id, { 
+          const ceo = latestAgents.find(a => a.role === 'CEO');
+          if (ceo) {
+            await surrealService.saveAgentLog({
+              agentId: ceo.id,
+              agentName: 'Paperclip CEO',
+              agentRole: 'CEO',
+              message: `Strategische Überprüfung: ${plans.CEO}`,
+              type: 'thought'
+            });
+            await surrealService.updateAgent(ceo.id, { 
               status: 'Working', 
-              currentTask: 'Blueprint-Finalisierung',
-              budget: foreman.budget + 50
+              currentTask: plans.CEO,
+              budget: (ceo.budget || 0) + 15
             });
           }
+
+          // 4. Architect prepares blueprint
+          setTimeout(async () => {
+            const foreman = latestAgents.find(a => a.role === 'Vorarbeiter');
+            if (foreman) {
+              await surrealService.saveAgentLog({
+                agentId: foreman.id,
+                agentName: 'Lead Architect',
+                agentRole: 'Vorarbeiter',
+                message: `Konstruktion läuft: ${plans.Architect}`,
+                type: 'communication'
+              });
+              await surrealService.updateAgent(foreman.id, { 
+                status: 'Working', 
+                currentTask: plans.Architect,
+                budget: (foreman.budget || 0) + 50
+              });
+            }
+          }, 4000);
         }, 3000);
-      }, 4000);
-    }, 500);
+      }, 2000);
+    }, 1000);
   };
 
   return { agents, logs, goal, loading, createGoal };

@@ -70,10 +70,10 @@ export const LiveLog: React.FC<LiveLogProps> = ({ logs }) => {
                     {log.agentName}
                   </span>
                   <span className="font-mono text-[9px] text-gray-600">
-                    {new Date(log.timestamp).toLocaleTimeString('de-DE', { hour12: false })}
+                    {log.timestamp ? new Date(log.timestamp).toLocaleTimeString('de-DE', { hour12: false }) : 'JETZT'}
                   </span>
                 </div>
-                <p className="font-sans text-xs text-gray-300 leading-relaxed tracking-wide">
+                <p className="font-sans text-xs text-white/90 leading-relaxed tracking-wide">
                   {log.message}
                 </p>
               </div>

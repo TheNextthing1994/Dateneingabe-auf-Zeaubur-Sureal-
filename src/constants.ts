@@ -30,7 +30,7 @@ export const INITIAL_PILLARS: Pillar[] = [
   { id: 'islam', name: 'Islam (Sirat)', icon: '🕋', color: '#eab308' }
 ];
 
-export const LIBRARY_TYPES = ['Seed', 'Projekt', 'Erkenntnis', 'Mission', 'Workflow'];
+export const LIBRARY_TYPES = ['Seed', 'Projekt', 'Erkenntnis', 'Mission', 'Workflow', 'Idee', 'Kunde', 'Ziel', 'Academy', 'Toolbox'];
 export const LIBRARY_AREAS = [
   { id: 'health', name: 'Gesundheit', icon: '🌿' },
   { id: 'dev', name: 'Pers. Entwicklung', icon: '📚' },

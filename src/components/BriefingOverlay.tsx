@@ -21,6 +21,7 @@ interface BriefingOverlayProps {
   onDismiss: () => void;
   onShowIntel?: () => void;
   onShowDetails?: () => void;
+  onShowLive?: () => void;
   mission?: string;
   stats: {
     seeds: number;
@@ -29,7 +30,7 @@ interface BriefingOverlayProps {
   };
 }
 
-export function BriefingOverlay({ onDismiss, onShowIntel, onShowDetails, mission, stats }: BriefingOverlayProps) {
+export function BriefingOverlay({ onDismiss, onShowIntel, onShowDetails, onShowLive, mission, stats }: BriefingOverlayProps) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -50,7 +51,7 @@ export function BriefingOverlay({ onDismiss, onShowIntel, onShowDetails, mission
               <ShieldCheck className="w-6 h-6 text-red-500" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white tracking-tight uppercase">D.T Briefing</h2>
+              <h2 className="text-2xl font-black text-white tracking-tight uppercase">DT Briefing</h2>
               <p className="text-[10px] font-bold text-red-500/60 uppercase tracking-[0.3em]">System Status: Optimal</p>
             </div>
           </div>
@@ -95,24 +96,31 @@ export function BriefingOverlay({ onDismiss, onShowIntel, onShowDetails, mission
               <Target className="w-4 h-4 text-red-500" />
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Aktuelle Mission</span>
             </div>
-            <div className="p-5 bg-white/5 border border-white/5 rounded-2xl">
-              <p className="text-lg font-bold text-white leading-relaxed">
+            <div className="p-5 bg-white/5 border border-white/5 rounded-2xl max-h-[150px] overflow-y-auto">
+              <p className="text-sm sm:text-lg font-bold text-white leading-relaxed">
                 {mission || "Ich jage jz alle meine projekte in Surreal rein so hab ich sie immer griffbereit"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 pt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
             <button 
               onClick={onDismiss}
-              className="flex-1 py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-red-600/20"
+              className="py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-red-600/20"
             >
-              Mission Starten
-              <ArrowRight className="w-4 h-4" />
+              Start
+              <Target className="w-3 h-3" />
+            </button>
+            <button 
+              onClick={onShowLive}
+              className="py-4 bg-white/5 hover:bg-white/10 text-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] border border-white/5 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95"
+            >
+              Direkt Live
+              <Activity className="w-3 h-3 text-red-500" />
             </button>
             <button 
               onClick={onShowDetails}
-              className="px-6 py-4 bg-white/5 hover:bg-white/10 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-white/5 transition-all"
+              className="py-4 bg-white/5 hover:bg-white/10 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] border border-white/5 transition-all hover:scale-[1.02] active:scale-95"
             >
               Details
             </button>

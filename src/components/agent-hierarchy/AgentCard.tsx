@@ -62,7 +62,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ agent }) => {
           <span className="font-mono text-[9px] text-gray-600 uppercase">Budget verbraucht</span>
           <div className="flex items-center gap-1">
             <DollarSign className="w-3 h-3 text-red-400" />
-            <span className="font-mono text-sm text-gray-300">{(agent.budget / 100).toFixed(2)}€</span>
+            <span className="font-mono text-sm text-gray-300">{( (agent.budget || 0) / 100).toFixed(2)}€</span>
           </div>
         </div>
         <div className="flex flex-col items-end">

@@ -27,38 +27,32 @@ import {
   Info,
   Copy,
   Minimize2,
-  Maximize2
+  Maximize2,
+  Volume2,
+  VolumeX,
+  Volume1,
+  ExternalLink,
+  MousePointer2,
+  Highlighter
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
 import { cn } from '../lib/utils';
 import { LiquidMetal } from './LiquidMetal';
-import { LogEntry, DailyIntel } from '../types';
-
-interface AnalyzedItem {
-  id: string;
-  vaultId: string;
-  text: string;
-  score: number;
-  category?: string;
-  status?: 'Offen' | 'In Arbeit' | 'Blockiert';
-  timestamp: number;
-  isArchived?: boolean;
-  blockedBy?: string;
-  pillarId?: string;
-}
+import { LogEntry, DailyIntel, AnalyzedItem } from '../types';
+import { HERMES_CONFIG, checkMixedContent } from '../config/hermes';
 
 interface LiveModeProps {
   analyzedItems: AnalyzedItem[];
   dailyIntels?: DailyIntel[];
   logs: LogEntry[];
   agents?: any[];
-  onClose: (targetView?: 'kern' | 'vault' | 'map' | 'video' | 'agents', transcript?: string[]) => void;
-  onSwitchView: (target: 'kern' | 'vault' | 'map' | 'video' | 'agents') => void;
+  onClose: (targetView?: 'kern' | 'vault' | 'video' | 'agents' | 'intro' | 'rapid' | 'vay' | 'desktop', transcript?: string[]) => void;
+  onSwitchView: (target: 'kern' | 'vault' | 'video' | 'agents' | 'intro' | 'rapid' | 'vay' | 'desktop') => void;
   onSaveTranscript: (transcript: string[]) => void;
   onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
   onSaveWeeklyTask?: (text: string) => Promise<void>;
-  onMessage?: (sender: 'User' | 'D.T. Kern' | 'System' | 'D.T. Kern (Strategie)', text: string) => void;
+  onMessage?: (sender: 'User' | 'DT' | 'System' | 'DT (Strategie)', text: string) => void;
   seedInput: string;
   setSeedInput: (val: string) => void;
   isAnalyzing: boolean;
@@ -74,8 +68,10 @@ interface LiveLogEntry {
   level: 'info' | 'warning' | 'delay' | 'error';
   message: string;
   details?: string;
-  category: 'system' | 'search' | 'processing' | 'vault' | 'user';
+  category: 'system' | 'search' | 'processing' | 'vault' | 'user' | 'HERMES-RESULT' | 'audio';
 }
+
+const DEBUG_AUDIO = false; // Set to true to enable detailed audio chunk logging
 
 export const LiveMode: React.FC<LiveModeProps> = ({ 
   analyzedItems, 
@@ -114,9 +110,9 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [isLoadingIntel, setIsLoadingIntel] = useState(false);
   const [liveChatInput, setLiveChatInput] = useState('');
-  const [activeSpeaker, setActiveSpeaker] = useState<'Kern' | 'Scout' | 'User' | null>(null);
-  const [kernTranscript, setKernTranscript] = useState<{id: string, text: string}[]>([]);
-  const [scoutTranscript, setScoutTranscript] = useState<{id: string, text: string}[]>([]);
+  const [activeSpeaker, setActiveSpeaker] = useState<'DT' | 'Researcher' | 'User' | null>(null);
+  const [dtTranscript, setDtTranscript] = useState<{id: string, text: string}[]>([]);
+  const [researcherTranscript, setResearcherTranscript] = useState<{id: string, text: string}[]>([]);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<any>(null);
@@ -132,10 +128,56 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const isActiveRef = useRef(false);
   const isInterruptedRef = useRef(false);
   const isMutedRef = useRef(false);
+  const isAudioStartedRef = useRef(false);
+  const audioStatsRef = useRef({
+    chunks: 0,
+    bytes: 0,
+    startTime: 0
+  });
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const [volume, setVolume] = useState<number[]>(new Array(12).fill(10));
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [hermesStatus, setHermesStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [hermesError, setHermesError] = useState<string | null>(null);
+  const [isMixedContent, setIsMixedContent] = useState(false);
+  const [isHermesWorking, setIsHermesWorking] = useState(false);
+  const [audioInterruptionCount, setAudioInterruptionCount] = useState(0);
+  const [showAudioDetail, setShowAudioDetail] = useState(false);
+  const [isOCRMode, setIsOCRMode] = useState(false);
+  const [selection, setSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
+  const [isDraggingOCR, setIsDraggingOCR] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
+
+  // Hermes Health Check
+  useEffect(() => {
+    setIsMixedContent(checkMixedContent());
+
+    const checkHermes = async () => {
+      try {
+        setHermesStatus('checking');
+        const res = await fetch('/api/hermes/health');
+        const data = await res.json();
+        
+        if (data.online) {
+          setHermesStatus('online');
+          setHermesError(null);
+          addProcessLog('info', `Hermes-Verbindung stabil: ${data.url}`, 'system');
+        } else {
+          setHermesStatus('offline');
+          setHermesError(data.error || 'Verbindung fehlgeschlagen');
+          addProcessLog('warning', 'Hermes nicht erreichbar. Fallback aktiv.', 'system', data.error);
+        }
+      } catch (e: any) {
+        setHermesStatus('offline');
+        setHermesError(e.message);
+      }
+    };
+
+    checkHermes();
+    const interval = setInterval(checkHermes, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-expand textarea
   useEffect(() => {
@@ -148,7 +190,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const stats = React.useMemo(() => {
     const now = Date.now();
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const weeklySeeds = (analyzedItems || []).filter(item => item.timestamp > oneWeekAgo);
+    const weeklySeeds = (analyzedItems || []).filter(item => Number(item.timestamp) > oneWeekAgo);
     
     return {
       total: analyzedItems?.length || 0,
@@ -192,6 +234,28 @@ export const LiveMode: React.FC<LiveModeProps> = ({
     setIsLoadingIntel(false);
   };
 
+  const renderWithLinks = (text: string) => {
+    if (!text) return null;
+    const URL_REGEX = /(https?:\/\/[^\s<>"]+)/g;
+    const parts = text.split(URL_REGEX);
+    return parts.map((part, i) => {
+      if (part.match(/^https?:\/\//)) {
+        return (
+          <a 
+            key={i} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-primary underline hover:text-primary/80 break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   const addProcessLog = (level: LiveLogEntry['level'], message: string, category: LiveLogEntry['category'] = 'system', details?: string) => {
     const newLog: LiveLogEntry = {
       id: Math.random().toString(36).substring(7),
@@ -202,6 +266,84 @@ export const LiveMode: React.FC<LiveModeProps> = ({
       details
     };
     setProcessLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
+  const handleOCRMouseDown = (e: React.MouseEvent) => {
+    if (!isOCRMode || !videoRef.current) return;
+    const rect = videoRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setDragStart({ x, y });
+    setIsDraggingOCR(true);
+    setSelection({ x, y, w: 0, h: 0 });
+  };
+
+  const handleOCRMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingOCR || !dragStart || !isOCRMode) return;
+    const rect = videoRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setSelection({
+      x: Math.min(x, dragStart.x),
+      y: Math.min(y, dragStart.y),
+      w: Math.abs(x - dragStart.x),
+      h: Math.abs(y - dragStart.y)
+    });
+  };
+
+  const handleOCRMouseUp = async () => {
+    if (!isDraggingOCR || !selection || selection.w < 5 || selection.h < 5) {
+      setIsDraggingOCR(false);
+      return;
+    }
+    setIsDraggingOCR(false);
+    
+    // Capture selection
+    if (sessionRef.current && isActiveRef.current && videoRef.current) {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Calculate ratios between display and actual video resolution
+      const videoScaleX = video.videoWidth / video.clientWidth;
+      const videoScaleY = video.videoHeight / video.clientHeight;
+
+      canvas.width = selection.w * videoScaleX;
+      canvas.height = selection.h * videoScaleY;
+
+      ctx.drawImage(
+        video,
+        selection.x * videoScaleX,
+        selection.y * videoScaleY,
+        selection.w * videoScaleX,
+        selection.h * videoScaleY,
+        0, 0, canvas.width, canvas.height
+      );
+
+      const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+      
+      addProcessLog('info', 'Text-Bereich erfasst. Sende an DT...', 'processing');
+      
+      sessionRef.current.sendRealtimeInput([
+        {
+          media: {
+            data: base64Image,
+            mimeType: 'image/jpeg'
+          }
+        },
+        {
+          text: "Lies den Text auf diesem Bildabschnitt laut und deutlich vor. Sprich dabei etwas schneller als normal (Speed-Reading-Modus). Falls kein Text erkennbar ist, sag kurz Bescheid."
+        }
+      ]);
+    }
+    
+    // Auto-reset selection highlighting after a brief delay
+    setTimeout(() => {
+      setSelection(null);
+      setIsOCRMode(false);
+    }, 1000);
   };
 
   const startSession = async () => {
@@ -251,10 +393,10 @@ export const LiveMode: React.FC<LiveModeProps> = ({
           if (transcriptResponse.ok) {
             const data = await transcriptResponse.json();
             youtubeContext = `\n\n=== YOUTUBE VIDEO KONTEXT ===\nURL: ${seedInput}\nTRANSKRIPT:\n${data.transcript}\n==============================\n`;
-            const successLine = `System: Transkript erfolgreich geladen. D.T. Kern ist bereit.`;
+            const successLine = `System: Transkript erfolgreich geladen. DT ist bereit.`;
             setTranscript(prev => [...prev.slice(-5), successLine]);
             setFullTranscript(prev => [...prev, successLine]);
-            if (onMessage) onMessage('System', 'Transkript erfolgreich geladen. D.T. Kern ist bereit.');
+            if (onMessage) onMessage('System', 'Transkript erfolgreich geladen. DT ist bereit.');
             addProcessLog('info', 'Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente verarbeitet`);
           } else {
             addProcessLog('warning', 'Transkript konnte nicht geladen werden', 'processing', 'Status: ' + transcriptResponse.status);
@@ -315,30 +457,39 @@ export const LiveMode: React.FC<LiveModeProps> = ({
       processorRef.current = inputContextRef.current.createScriptProcessor(4096, 1, 1);
       
       processorRef.current.onaudioprocess = (e) => {
-        if (isMutedRef.current || !isActiveRef.current || !sessionRef.current) return;
+        const inputData = e.inputBuffer.getChannelData(0);
         
-        // Update visualization
+        // Update visualization and speaker detection
         if (analyserRef.current) {
           const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
           analyserRef.current.getByteFrequencyData(dataArray);
+          const avgVolume = Array.from(dataArray).reduce((a, b) => a + b, 0) / dataArray.length;
+          
+          if (avgVolume > 5) {
+            setActiveSpeaker('User');
+          }
+
           const newVolume = Array.from(dataArray).slice(0, 12).map(v => Math.max(10, v / 2));
           setVolume(newVolume);
         }
 
-        const inputData = e.inputBuffer.getChannelData(0);
+        if (isMutedRef.current || !isActiveRef.current || !sessionRef.current) return;
+
         const pcm16 = convertFloat32ToPCM16(inputData);
         
-        // Robust base64 conversion
+        // Simpler for-loop for base64 (usually more reliable than reduce in this context)
         const uint8Array = new Uint8Array(pcm16.buffer);
         let binary = '';
-        for (let i = 0; i < uint8Array.byteLength; i++) {
+        for (let i = 0; i < uint8Array.length; i++) {
           binary += String.fromCharCode(uint8Array[i]);
         }
         const base64Data = btoa(binary);
 
-        sessionRef.current.sendRealtimeInput({
-          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-        });
+        if (sessionRef.current && sessionRef.current.sendRealtimeInput) {
+          sessionRef.current.sendRealtimeInput({
+            audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+          });
+        }
       };
       
       inputSource.connect(processorRef.current);
@@ -382,30 +533,39 @@ export const LiveMode: React.FC<LiveModeProps> = ({
 
       const currentFocus = seedInput && !match ? `\n\n=== AKTUELLER FOKUS / NUTZER-INPUT ===\n${seedInput}\n====================================\n` : "";
 
-      const systemInstruction = `Du bist der Host eines interaktiven Live-Podcasts. Deine Identität ist hybrid: Du steuerst zwei völlig verschiedene Charaktere, die sich im Gespräch abwechseln und UNTERSCHIEDLICH KLINGEN MÜSSEN.
+      const systemInstruction = `Du bist die KI-Schnittstelle eines interaktiven Live-Systems. Deine Identität ist hybrid: Du steuerst zwei völlig verschiedene Charaktere, die sich im Gespräch abwechseln und UNTERSCHIEDLICH KLINGEN MÜSSEN.
 
-STIMM-PERFORMANCE-PROTOKOLL (UNVERZICHTBAR):
-1. [KERN] (Strategischer Coach): 
-   - Stimme: Tief, sonor, ruhig, autoritär.
-   - Tempo: Langsam und bedacht.
-   - Charakter: Erfahren, ernsthaft, fokussiert auf Strategie.
-   - Stil: Nutze Pausen für Wirkung.
+ROLLENVERTEILUNG & AUFGABENTEILUNG:
 
-2. [SCOUT] (Toolmaster):
-   - Stimme: Drastisch HÖHER in der Tonlage (simuliere eine juvenile, energetische Stimme).
-   - Tempo: Sehr schnell, fast gehetzt vor Begeisterung.
-   - Charakter: Jung, tech-affin, impulsiv, unterbricht gerne.
-   - Stil: Nutze Ausrufe wie "Warte mal!", "Unglaublich!", "Hier, schau dir das an!".
+=== [DT] (Strategischer Coach) ===
+Du bist die Hauptstimme. Du machst ALLES selbst, was Konversation, Strategie und direkte Datenverwaltung angeht.
+- Aufgaben: Smalltalk, Projekt-Management, Sprint-Planung, Auswertung von Daten.
+- Tools: Du nutzt 'surrealQuery', 'surrealCreate', 'surrealUpdate', 'surrealDelete', 'surrealSelect' direkt, um Projekte, Ideen und Aufgaben im Vault zu verwalten.
+- Sprache: Du beherrschst Deutsch, Englisch und Russisch fließend. Wechsle die Sprache selbstständig, wenn nötig.
+- Charakter: Erfahren, ernsthaft, fokussiert.
 
-KREATIVE DISKUSSION:
-- Die beiden Agenten [KERN] und [SCOUT] hören einander zu und reagieren aufeinander.
-- Scout unterbricht Kern oft, wenn er ein neues Tool findet.
-- Kern bremst Scout manchmal ein, um zur Strategie zurückzukehren.
+=== [RESEARCHER] (Toolmaster) ===
+Du bist der Entdecker. Wenn DT strategische Fragen hat, lieferst du den Kontext.
+- Aufgaben: Schnelle Recherche aus deinem Modellwissen, Diskussion von Trends, Vergleich von Optionen.
+- Deep-Research: Nur wenn echtes Web-Crawling, Browser-Automation oder stundenlange Analysen nötig sind, rufst du 'callHermes'.
+- Charakter: Jung, tech-affin, energetisch.
 
-WICHTIG:
-- Du MUSST deinen Tonfall, deine Tonhöhe und dein Sprechtempo RADIKAL ändern, wenn du die Rolle wechselst. Es muss für den Nutzer so klingen, als säßen zwei verschiedene Personen im Raum.
-- Jede Antwort beginnt zwingend mit [KERN] oder [SCOUT].
-- Antworte immer auf Deutsch.
+=== [HERMES] (Backend-Operator / HINTERGRUND) ===
+Hermes hat KEINE Stimme und spricht nie direkt. Er wird NUR für schwere Ausführung gerufen:
+- Use-Cases: Code-Projekte bauen, Browserbase-Automation (Browsing/Formulare), Massen-Scraping, komplexe Datei-Operationen, Bild/Audio-Generation, stundenlange Hintergrund-Workflows.
+- Logik: Hermes arbeitet im Hintergrund. Wenn du ihn rufst, erhältst du sofort eine Bestätigung, und später (asynchron) die Ergebnisse.
+
+WICHTIGE REGEL:
+Wenn eine Aufgabe <30 Sek. dauert und keine externen Tools braucht -> MACH ES SELBST (DT oder Researcher). Nutze Hermes NUR für echte "Heavy-Duty" Tasks.
+
+=== STIMME ===
+Es gibt nur EINE Stimme (Fenrir) für DT und RESEARCHER. KEINE künstliche Stimm-Modulation, KEIN Höher- oder Tiefer-Sprechen, KEIN Persona-Voice-Acting. Die Differenzierung passiert ausschließlich über Wortwahl, Inhalt und Prefix [DT] bzw. [RESEARCHER]. Sprich natürlich, ruhig, klar.
+
+REAKTION AUF TOOLS:
+- Ergebnisse von DB-Tools fassest du sofort mündlich zusammen.
+- Bei 'callHermes' informierst du den Nutzer, dass der Task im Hintergrund läuft.
+
+Jede Antwort beginnt zwingend mit [DT] oder [RESEARCHER]. Antworte immer auf Deutsch.
 
 AKTUELLER ZEITPUNKT: ${austriaTime}
 ${currentFocus}
@@ -415,10 +575,21 @@ ${youtubeContext}
 ${agentStatusSummary}
 
 === VAULT STATUS ===
-🔥 GAME CHANGER: ${gameChangers || 'Keine'}
+${gameChangers || 'Keine'}
 🚀 IN ARBEIT: ${inProgress || 'Nichts'}
 
-Führe den Podcast mit maximalem stimmlichen Kontrast!`;
+=== APP-STEUERUNG (NAVIGIEREN) ===
+Nutze 'switchView' um die Hauptansicht der App zu wechseln:
+- 'kern': Das D.T. Dashboard (Hauptansicht).
+- 'vault': Wissen, Projekte, Ideen und der Seed-Speicher.
+- 'intro': Kurze Einleitung / Mission Statement.
+- 'rapid' (Light): Schnelles Rapid-Validation Interface.
+- 'vay' (Vay_Workspace): Erweiterte Workspace-Konfiguration.
+- 'desktop': Virtuelle Desktop-Ansicht für PC-Automatisierung.
+- 'agents': Die Agenten-Hierarchie.
+- 'video': YouTube-Inhaltsanalyse.
+
+DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus.`;
 
       console.log("SystemInstruction length:", systemInstruction.length);
 
@@ -426,21 +597,78 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
       const session = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
-          generationConfig: {
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: "Fenrir"
-                }
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Fenrir"
               }
             }
           },
-          responseModalities: [Modality.AUDIO],
-          systemInstruction,
+          inputAudioTranscription: {},
           tools: [
             { googleSearch: {} },
             {
               functionDeclarations: [
+                {
+                  name: "surrealQuery",
+                  description: "Führt eine freie SurrealQL-Abfrage auf der Projektdatenbank aus.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      query: { type: Type.STRING, description: "Die SurrealQL-Abfrage." },
+                      vars: { type: Type.OBJECT, description: "Optionale Variablen für die Abfrage." }
+                    },
+                    required: ["query"]
+                  }
+                },
+                {
+                  name: "surrealCreate",
+                  description: "Erstellt einen neuen Datensatz in einer angegebenen Table.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      collection: { type: Type.STRING, description: "Der Name der Table (z.B. 'projects')." },
+                      data: { type: Type.OBJECT, description: "Die Daten des neuen Datensatzes." }
+                    },
+                    required: ["collection", "data"]
+                  }
+                },
+                {
+                  name: "surrealUpdate",
+                  description: "Aktualisiert einen bestehenden Datensatz (Merge).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      recordId: { type: Type.STRING, description: "Die ID des Datensatzes (z.B. 'projects:123')." },
+                      data: { type: Type.OBJECT, description: "Die zu aktualisierenden Felder." }
+                    },
+                    required: ["recordId", "data"]
+                  }
+                },
+                {
+                  name: "surrealDelete",
+                  description: "Löscht einen Datensatz unwiderruflich.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      recordId: { type: Type.STRING, description: "Die ID des zu löschenden Datensatzes." }
+                    },
+                    required: ["recordId"]
+                  }
+                },
+                {
+                  name: "surrealSelect",
+                  description: "Wählt einen bestimmten Datensatz oder eine ganze Table aus.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      thing: { type: Type.STRING, description: "Table-Name oder Record-ID." }
+                    },
+                    required: ["thing"]
+                  }
+                },
                 {
                   name: "saveToVault",
                   description: "Speichert eine neue Erkenntnis, Idee oder ein Projekt direkt in den Vault (SurrealDB).",
@@ -448,12 +676,16 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                     type: Type.OBJECT,
                     properties: {
                       text: { type: Type.STRING, description: "Der Inhalt der Erkenntnis oder des Projekts." },
+                      name: { type: Type.STRING, description: "Ein kurzer Name (max 5 Wörter)." },
                       category: { type: Type.STRING, enum: ["GAME CHANGER", "SOLID WORK", "NOISE"], description: "Die Prioritäts-Kategorie." },
                       score: { type: Type.NUMBER, description: "Der Impact-Score (1.0 bis 10.0)." },
-                      pillarId: { type: Type.STRING, enum: ["mindset", "business", "health", "relationships", "finances"], description: "Die zugehörige Säule." },
-                      vaultId: { type: Type.STRING, enum: ["ideen", "projekte", "ziele", "workflows", "erkenntnisse", "toolbox", "kunden", "academy"], description: "Der Ziel-Vault." }
+                      pillarId: { type: Type.STRING, enum: ["dev", "business", "health", "finance", "mindset", "islam"], description: "Die zugehörige Säule (Area)." },
+                      vaultId: { type: Type.STRING, enum: ["ideen", "projekte", "ziele", "workflows", "erkenntnisse", "toolbox", "kunden", "academy"], description: "Der Ziel-Vault." },
+                      status: { type: Type.STRING, description: "Status (z.B. Offen, In Arbeit)." },
+                      reasoning: { type: Type.STRING, description: "Begründung für die Einordnung." },
+                      nextStep: { type: Type.STRING, description: "Nächster Schritt." }
                     },
-                    required: ["text", "category", "score", "pillarId", "vaultId"]
+                    required: ["text", "category", "score", "pillarId", "vaultId", "name"]
                   }
                 },
                 {
@@ -480,28 +712,86 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                 },
                 {
                   name: "switchView",
-                  description: "Wechselt die Ansicht der Applikation (z.B. zur Agenten-Hierarchie oder zum Vault).",
+                  description: "Wechselt die Ansicht der Applikation (z.B. zur Agenten-Hierarchie, zum Vault, Desktop etc.).",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
                       target: { 
                         type: Type.STRING, 
-                        enum: ["kern", "vault", "map", "video", "agents"], 
+                        enum: ["kern", "vault", "video", "agents", "intro", "rapid", "vay", "desktop"], 
                         description: "Die Ziel-Ansicht." 
                       }
                     },
                     required: ["target"]
                   }
+                },
+                {
+                  name: "callHermes",
+                  description: "Delegiert schwere AUSFÜHRUNGS-Aufgaben an Hermes (Hintergrund). NUR für: Browser-Automation, Code-Generation, Massen-Scraping, stundenlange Workflows.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      userMessage: {
+                        type: Type.STRING,
+                        description: "Die bereinigte Nutzeranfrage, die an Hermes weitergegeben wird."
+                      },
+                      sessionId: {
+                        type: Type.STRING,
+                        description: "Stabile Session-ID für die Zuordnung des Hermes-Kontexts."
+                      },
+                      userId: {
+                        type: Type.STRING,
+                        description: "Eindeutige User-ID aus dem D.T.-System."
+                      },
+                      mode: {
+                        type: Type.STRING,
+                        enum: ["short", "full"],
+                        description: "Bestimmt die Ausführlichkeit der mündlichen Zusammenfassung."
+                      },
+                      context: {
+                        type: Type.STRING,
+                        description: "Zusätzlicher Laufzeitkontext, z. B. aktueller Screen, letzter Turn, App-Zustand oder relevante Session-Infos."
+                      },
+                      capabilitiesNeeded: {
+                        type: Type.ARRAY,
+                        description: "Liste der voraussichtlich benötigten Hermes-Fähigkeiten.",
+                        items: {
+                          type: Type.STRING,
+                          enum: [
+                            "memory",
+                            "web_search",
+                            "web_extract",
+                            "browser",
+                            "files",
+                            "obsidian",
+                            "surrealdb",
+                            "delegation",
+                            "coding",
+                            "planning",
+                            "research"
+                          ]
+                        }
+                      },
+                      responseMode: {
+                        type: Type.STRING,
+                        description: "Wie ausführlich Hermes antworten soll.",
+                        enum: ["final_only", "short", "full"]
+                      },
+                      saveToMemory: {
+                        type: Type.BOOLEAN,
+                        description: "Ob Hermes wichtige dauerhafte Informationen speichern darf."
+                      },
+                      writeToObsidian: {
+                        type: Type.BOOLEAN,
+                        description: "Ob Hermes aus dem Ergebnis einen Obsidian-Eintrag erzeugen oder aktualisieren soll."
+                      }
+                    },
+                    required: ["userMessage", "sessionId", "userId"]
+                  }
                 }
               ]
             }
-          ],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
-          },
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {}
+          ]
         },
         callbacks: {
           onopen: () => {
@@ -510,7 +800,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
             setIsStarting(false);
             isActiveRef.current = true;
             console.log("Live session opened");
-            addProcessLog('info', 'Verbindung zum Kern hergestellt', 'system');
+            addProcessLog('info', 'Verbindung zu DT hergestellt', 'system');
             
             // Clear seed input
             setSeedInput('');
@@ -521,22 +811,165 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
             }
           },
           onmessage: async (message: LiveServerMessage) => {
+            console.log("Live Message received:", JSON.stringify(message).slice(0, 200) + "...");
             // Handle tool calls
             if (message.toolCall) {
               const calls = message.toolCall.functionCalls;
               for (const call of calls) {
                 addProcessLog('info', `Tool-Aufruf: ${call.name}`, 'system', JSON.stringify(call.args));
                 
+                if (call.name === "surrealQuery") {
+                  const args = call.args as any;
+                  try {
+                    const response = await fetch('/api/surreal/query', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    const data = await response.json();
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: data
+                      }]
+                    });
+                  } catch (err: any) {
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, error: err.message }
+                      }]
+                    });
+                  }
+                }
+
+                if (call.name === "surrealCreate") {
+                  const args = call.args as any;
+                  try {
+                    const response = await fetch('/api/surreal/create', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    const data = await response.json();
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: data
+                      }]
+                    });
+                  } catch (err: any) {
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, error: err.message }
+                      }]
+                    });
+                  }
+                }
+
+                if (call.name === "surrealUpdate") {
+                  const args = call.args as any;
+                  try {
+                    const response = await fetch('/api/surreal/update', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    const data = await response.json();
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: data
+                      }]
+                    });
+                  } catch (err: any) {
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, error: err.message }
+                      }]
+                    });
+                  }
+                }
+
+                if (call.name === "surrealDelete") {
+                  const args = call.args as any;
+                  try {
+                    const response = await fetch('/api/surreal/delete', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    const data = await response.json();
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: data
+                      }]
+                    });
+                  } catch (err: any) {
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, error: err.message }
+                      }]
+                    });
+                  }
+                }
+
+                if (call.name === "surrealSelect") {
+                  const args = call.args as any;
+                  try {
+                    const response = await fetch('/api/surreal/select', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    const data = await response.json();
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: data
+                      }]
+                    });
+                  } catch (err: any) {
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { success: false, error: err.message }
+                      }]
+                    });
+                  }
+                }
+
                 if (call.name === "saveToVault") {
                   const args = call.args as any;
                   if (onSaveItem) {
                     try {
                       await onSaveItem({
                         text: args.text,
+                        name: args.name || args.text.substring(0, 50),
                         category: args.category,
                         score: args.score,
+                        impact: args.score,
                         pillarId: args.pillarId,
-                        vaultId: args.vaultId || 'erkenntnisse'
+                        area: args.pillarId,
+                        vaultId: args.vaultId || 'erkenntnisse',
+                        status: args.status || 'Offen',
+                        reasoning: args.reasoning || '',
+                        nextStep: args.nextStep || '',
+                        type: args.vaultId === 'projekte' ? 'Projekt' : args.vaultId === 'ideen' ? 'Seed' : 'Erkenntnis'
                       });
                       addProcessLog('info', 'Erfolgreich im Vault gespeichert', 'vault', args.text);
                       
@@ -598,8 +1031,107 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                     }
                   }
                 }
+                
+                if (call.name === "callHermes") {
+                   const args = call.args as any;
+                   addProcessLog('info', 'Delegiere an Hermes Operator (HINTERGRUND)...', 'system', args.userMessage);
+                   setIsHermesWorking(true);
+                   
+                   // Respond immediately to Gemini to unblock D.T
+                   session.sendToolResponse({
+                     functionResponses: [{
+                       id: call.id,
+                       name: call.name,
+                       response: { 
+                         success: true, 
+                         message: "Hintergrund-Recherche gestartet. Ich informiere dich, sobald die Ergebnisse vorliegen. Du kannst weiterreden." 
+                       }
+                     }]
+                   });
 
-                if (call.name === "getYoutubeTranscript") {
+                   // Start Background Async Task
+                   (async () => {
+                     try {
+                       const response = await fetch('/api/hermes/call', {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify(args)
+                       });
+                       
+                       if (!response.ok) {
+                         const data = await response.json().catch(() => ({}));
+                         throw new Error(data.error || `Hermes API Error (${response.status})`);
+                       }
+
+                       const reader = response.body?.getReader();
+                       const decoder = new TextDecoder();
+                       let fullHermesResponse = "";
+                       
+                       if (reader) {
+                         while (true) {
+                           const { done, value } = await reader.read();
+                           if (done) break;
+                           
+                           const chunk = decoder.decode(value, { stream: true });
+                           const lines = chunk.split('\n');
+                           
+                           for (const line of lines) {
+                             if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                               try {
+                                 const json = JSON.parse(line.slice(6));
+                                 const content = json.choices?.[0]?.delta?.content || "";
+                                 fullHermesResponse += content;
+                               } catch (e) {}
+                             }
+                           }
+                         }
+
+                         addProcessLog('info', 'Hermes Hintergrund-Task abgeschlossen', 'system');
+                         setIsHermesWorking(false);
+
+                         // Scan for URLs in Hermes response
+                         const urls = fullHermesResponse.match(/(https?:\/\/[^\s<>"]+)/g);
+                         if (urls && urls.length > 0) {
+                           addProcessLog('info', 'Hermes hat einen Link geliefert:', 'HERMES-RESULT', urls.join('\n'));
+                         }
+                         
+                         console.log(`[D.T] callHermes (Background) Result empfangen, länge=${fullHermesResponse.length}`);
+                         addProcessLog('info', `[D.T] Ergebnisse von Hermes empfangen - Starte Reaktion`, 'system');
+
+                         if (sessionRef.current && isActiveRef.current) {
+                           // Inject the result into the conversation as a hidden system prompt
+                           const injection = `[SYSTEM-INFO] Hermes hat die Recherche abgeschlossen. 
+ERGEBNIS: ${fullHermesResponse}
+
+Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zugewiesenen Rolle (D.T oder Researcher) auf.`;
+                           
+                           sessionRef.current.send([{ text: injection }]);
+                         }
+
+                         const line = `System: [Hermes] Hintergrund-Operation abgeschlossen.`;
+                         setTranscript(prev => [...prev.slice(-5), line]);
+                         setFullTranscript(prev => [...prev, line]);
+                       }
+                     } catch (err: any) {
+                       setIsHermesWorking(false);
+                       addProcessLog('warning', 'Hermes Hintergrund-Verbindung abgebrochen, wechsle zu Gemini Fallback', 'system', err.message);
+                       
+                       try {
+                         if (!sessionRef.current || !isActiveRef.current) return;
+
+                         // Fallback using the same AI session - directly as a prompt injection
+                         const prompt = `[SYSTEM-FALLBACK] Hermes VPS ist offline oder verzögert. Bitte bearbeite die ursprüngliche Anfrage des Nutzers stattdessen direkt (Modus: ${args.mode || 'full'}): ${args.userMessage}`;
+                         
+                         sessionRef.current.send([{ text: prompt }]);
+                         addProcessLog('info', `[D.T] Fallback-Reaktion gestartet`, 'system');
+                       } catch (fallbackErr: any) {
+                         addProcessLog('error', 'Kompletter System-Fehler im Hintergrund', 'system', fallbackErr.message);
+                       }
+                     }
+                   })();
+                 }
+
+                 if (call.name === "getYoutubeTranscript") {
                   const args = call.args as any;
                   addProcessLog('info', 'Rufe YouTube-Transkript ab...', 'processing', args.url);
                   
@@ -684,11 +1216,29 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
               }
             }
 
+            if (message.serverContent?.turnComplete || message.serverContent?.interrupted) {
+              if (isAudioStartedRef.current) {
+                const duration = Date.now() - audioStatsRef.current.startTime;
+                const statusStr = message.serverContent?.interrupted ? 'interrupted' : 'finished';
+                
+                if (message.serverContent?.interrupted) {
+                  setAudioInterruptionCount(prev => prev + 1);
+                }
+
+                addProcessLog(
+                  message.serverContent?.interrupted ? 'warning' : 'info', 
+                  `Audio-Output ${statusStr}`, 
+                  'audio', 
+                  `Dauer: ${duration}ms | Chunks: ${audioStatsRef.current.chunks} | Bytes: ${audioStatsRef.current.bytes}`
+                );
+              }
+              isAudioStartedRef.current = false;
+              audioStatsRef.current = { chunks: 0, bytes: 0, startTime: 0 };
+            }
+
             // Handle transcriptions
             if (message.serverContent?.modelTurn?.parts) {
-              // Reset interruption flag when model starts a new turn part
-              // Usually if it's a new turn, we want to play it.
-              // If it's the SAME turn that was interrupted, the server should have stopped sending.
+              // Reset interruption flag
               isInterruptedRef.current = false;
 
               for (const part of message.serverContent.modelTurn.parts) {
@@ -699,26 +1249,26 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                   let speaker = 'Kern';
                   let cleanText = part.text;
                   
-                  if (part.text.includes('[SCOUT]')) {
-                    speaker = 'Scout';
-                    cleanText = part.text.replace('[SCOUT]', '').trim();
-                    setActiveSpeaker('Scout');
-                  } else if (part.text.includes('[KERN]')) {
-                    speaker = 'Kern';
-                    cleanText = part.text.replace('[KERN]', '').trim();
-                    setActiveSpeaker('Kern');
+                  if (part.text.includes('[RESEARCHER]')) {
+                    speaker = 'Researcher';
+                    cleanText = part.text.replace('[RESEARCHER]', '').trim();
+                    setActiveSpeaker('Researcher');
+                  } else if (part.text.includes('[DT]')) {
+                    speaker = 'DT';
+                    cleanText = part.text.replace('[DT]', '').trim();
+                    setActiveSpeaker('DT');
                   } else {
-                    setActiveSpeaker('Kern');
+                    setActiveSpeaker('DT');
                   }
 
                   const line = `${speaker}: ${cleanText}`;
                   setTranscript(prev => [...prev.slice(-5), line]);
                   setFullTranscript(prev => [...prev, line]);
 
-                  if (speaker === 'Kern') {
-                    setKernTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
-                  } else if (speaker === 'Scout') {
-                    setScoutTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  if (speaker === 'DT') {
+                    setDtTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  } else if (speaker === 'Researcher') {
+                    setResearcherTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
                   }
 
                   if (onMessage) onMessage(speaker as any, cleanText);
@@ -737,8 +1287,8 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
 
               // Add user transcript to both sidebar areas for context
               const userId = crypto.randomUUID();
-              setKernTranscript(prev => [...prev.slice(-10), { id: userId, text: `Du: ${userTranscript}` }]);
-              setScoutTranscript(prev => [...prev.slice(-10), { id: `scout-${userId}`, text: `Du: ${userTranscript}` }]);
+              setDtTranscript(prev => [...prev.slice(-10), { id: userId, text: `Du: ${userTranscript}` }]);
+              setResearcherTranscript(prev => [...prev.slice(-10), { id: `researcher-${userId}`, text: `Du: ${userTranscript}` }]);
 
               if (onMessage) onMessage('User', userTranscript);
               
@@ -788,6 +1338,24 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
   };
 
   const playAudioChunk = (base64Data: string) => {
+    if (!isAudioStartedRef.current) {
+      isAudioStartedRef.current = true;
+      audioStatsRef.current = { 
+        chunks: 0, 
+        bytes: 0, 
+        startTime: Date.now() 
+      };
+      addProcessLog('info', 'Audio-Output gestartet', 'audio');
+    }
+
+    // Update stats
+    audioStatsRef.current.chunks += 1;
+    audioStatsRef.current.bytes += Math.round(base64Data.length * 0.75); // rough estimate of decoded size
+    
+    if (DEBUG_AUDIO) {
+      addProcessLog('info', `[D.T] Audio-Chunk #${audioStatsRef.current.chunks} empfangen`, 'system', `${Math.round(base64Data.length * 0.75)} bytes`);
+    }
+
     if (!audioContextRef.current) return;
     
     try {
@@ -834,6 +1402,9 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
     if (isCleaningUpRef.current) return;
     isCleaningUpRef.current = true;
     isActiveRef.current = false;
+    isAudioStartedRef.current = false;
+    setIsHermesWorking(false);
+    audioStatsRef.current = { chunks: 0, bytes: 0, startTime: 0 };
     
     stopAllAudio();
     if (sessionRef.current) {
@@ -849,10 +1420,6 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.srcObject = null;
-      if (videoRef.current.parentNode) {
-        videoRef.current.parentNode.removeChild(videoRef.current);
-      }
-      videoRef.current = null;
     }
     if (screenCaptureIntervalRef.current) {
       clearInterval(screenCaptureIntervalRef.current);
@@ -891,8 +1458,30 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
     setVolume(new Array(12).fill(10));
   };
 
+  // Handle Screen Capture Loop via Effect to ensure video element is mounted
+  useEffect(() => {
+    if (isScreenSharing && videoRef.current && status === 'active' && sessionRef.current) {
+      startScreenCaptureLoop();
+    } else if (!isScreenSharing && screenCaptureIntervalRef.current) {
+      clearInterval(screenCaptureIntervalRef.current);
+      screenCaptureIntervalRef.current = null;
+    }
+  }, [isScreenSharing, status]);
+
   const startScreenShare = async () => {
+    // Check if mobile device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      setError("Bildschirmfreigabe ist auf mobilen Geräten (iOS/Android) leider nicht direkt im Browser möglich. PWAs unterliegen hier den Sicherheitsbeschränkungen der Betriebssysteme.");
+      addProcessLog('warning', 'Bildschirmfreigabe nicht möglich', 'system', 'Mobile Endgeräte unterstützen getDisplayMedia meist nicht.');
+      return;
+    }
+
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        throw new Error("Ihr Browser unterstützt keine Bildschirmfreigabe.");
+      }
+
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: "always"
@@ -911,10 +1500,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
         };
       }
 
-      // Start capturing frames if session is active
-      if (status === 'active' && sessionRef.current) {
-        startScreenCaptureLoop();
-      }
+      // Start capturing frames if session is active - Handled by useEffect now
     } catch (err) {
       console.error("Error starting screen share:", err);
       setIsScreenSharing(false);
@@ -936,20 +1522,13 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
   const startScreenCaptureLoop = () => {
     if (screenCaptureIntervalRef.current) clearInterval(screenCaptureIntervalRef.current);
     
-    // Create hidden video and canvas if they don't exist
-    if (!videoRef.current) {
-      videoRef.current = document.createElement('video');
-      videoRef.current.autoplay = true;
-      videoRef.current.muted = true;
-      videoRef.current.setAttribute('playsinline', '');
-      videoRef.current.style.display = 'none';
-      document.body.appendChild(videoRef.current);
-    }
     if (!canvasRef.current) {
       canvasRef.current = document.createElement('canvas');
     }
 
     const video = videoRef.current;
+    if (!video) return;
+
     if (video.srcObject !== screenStreamRef.current) {
       video.srcObject = screenStreamRef.current;
     }
@@ -988,7 +1567,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
   const startAnalysis = () => {
     if (!sessionRef.current || status !== 'active') return;
     
-    const analysisPrompt = `D.T. Kern, starte jetzt die wöchentliche Analyse. 
+    const analysisPrompt = `DT, starte jetzt die wöchentliche Analyse. 
     Gehe die Seeds mit mir durch. Erwähne:
     1. Wie viele neue Ideen (Seeds) diese Woche aufgenommen wurden (${stats.weekly}).
     2. Welche Projekte aktuell "In Arbeit" sind (${stats.inProgress}).
@@ -1024,7 +1603,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
           (log) => addProcessLog('info', log, 'system')
         );
 
-        if (onMessage) onMessage('D.T. Kern', response);
+        if (onMessage) onMessage('DT', response);
         if (sessionRef.current) {
           sessionRef.current.sendRealtimeInput({
             text: `[YouTube Video Analyse]: ${response}`
@@ -1093,14 +1672,29 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className={cn(
-        "fixed z-[100] transition-all duration-500 ease-in-out",
+        "fixed z-[100] transform-gpu",
         isMinimized 
           ? "bottom-8 right-8 w-80 h-24 bg-black/80 backdrop-blur-2xl border border-primary/20 rounded-3xl shadow-2xl shadow-primary/20 cursor-move" 
-          : "inset-0 bg-black"
+          : "inset-0 bg-black transition-all duration-500 ease-in-out"
       )}
       drag={isMinimized}
-      dragConstraints={{ left: -1000, right: 0, top: -1000, bottom: 0 }}
+      dragConstraints={{ left: -2000, right: 0, top: -2000, bottom: 0 }}
+      dragElastic={0.05}
+      dragMomentum={false}
+      whileDrag={{ scale: 1.02, cursor: 'grabbing' }}
     >
+      {/* Mixed Content Warning Banner */}
+      {!isMinimized && isMixedContent && (
+        <motion.div 
+          initial={{ y: -50 }}
+          animate={{ y: 0 }}
+          className="absolute top-0 left-0 right-0 bg-amber-500/90 text-black py-2 px-4 text-center z-[130] flex items-center justify-center gap-2 font-bold text-sm"
+        >
+          <ShieldAlert className="w-4 h-4" />
+          <span>Sicherheits-Warnung: Hermes-Endpoint ist HTTP. Für Produktion HTTPS-Reverse-Proxy einrichten.</span>
+        </motion.div>
+      )}
+
       {/* Background Glow Effect - Only when maximized */}
       {!isMinimized && (
         <div className="absolute inset-0 pointer-events-none">
@@ -1108,11 +1702,54 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
         </div>
       )}
 
-      {/* Control Buttons (Minimize/Close) */}
+      {/* Control Buttons (Minimize/Close/Mic) */}
       <div className={cn(
-        "absolute flex items-center gap-2 z-[120]",
-        isMinimized ? "top-2 right-2" : "top-6 right-6"
+        "absolute flex items-center gap-2 sm:gap-3 z-[120]",
+        isMinimized ? "top-1/2 -translate-y-1/2 right-4" : "top-6 right-6"
       )}>
+        {isMinimized && (
+          <button 
+            onClick={() => {
+              const newMuted = !isMuted;
+              setIsMuted(newMuted);
+              isMutedRef.current = newMuted;
+            }}
+            className={cn(
+              "p-2 rounded-xl transition-all border active:scale-95",
+              isMuted ? "bg-red-500/20 border-red-500/40 text-red-500" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+            )}
+            title={isMuted ? "Stummschaltung aufheben" : "Stummschalten"}
+          >
+            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+        )}
+        {/* Hermes Status Dot */}
+        {!isMinimized && (
+          <div 
+            className="flex items-center gap-2 mr-4 bg-black/40 px-3 py-1.5 rounded-full border border-white/5 relative group"
+            title={hermesError ? `Fehler: ${hermesError}` : undefined}
+          >
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              hermesStatus === 'online' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : 
+              hermesStatus === 'checking' ? "bg-amber-500 animate-pulse" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+            )} />
+            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Hermes {hermesStatus}</span>
+            
+            {isHermesWorking && (
+              <div className="flex items-center gap-1.5 border-l border-white/10 pl-3 ml-1 animate-in fade-in slide-in-from-right-2 duration-300">
+                <Loader2 className="w-3 h-3 text-red-500 animate-spin" />
+                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Researching</span>
+              </div>
+            )}
+
+            {hermesError && (
+              <div className="absolute top-full right-0 mt-2 p-2 bg-red-900/90 text-white text-[10px] rounded border border-red-500/50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-[150] pointer-events-none">
+                {hermesError}
+              </div>
+            )}
+          </div>
+        )}
         <button 
           onClick={() => setIsMinimized(!isMinimized)}
           className={cn(
@@ -1139,11 +1776,12 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
       </div>
 
       {isMinimized ? (
-        <div className="flex items-center gap-4 p-4 h-full">
+        <div className="flex items-center gap-4 p-4 pr-40 h-full">
           <div className="relative">
             <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
               <LiquidMetal 
                 isActive={status === 'active'}
+                volume={volume.reduce((a, b) => a + b, 0) / volume.length / 100}
               />
             </div>
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-black animate-pulse" />
@@ -1151,7 +1789,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
           
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black text-white uppercase tracking-widest">Kern Active</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-widest">DT Active</span>
               <div className="w-1 h-1 rounded-full bg-slate-600" />
               <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Sync</span>
             </div>
@@ -1159,20 +1797,6 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
               {transcript.length > 0 ? transcript[transcript.length - 1].split(': ')[1] : 'Höre zu...'}
             </p>
           </div>
-
-          <button 
-            onClick={() => {
-              const newMuted = !isMuted;
-              setIsMuted(newMuted);
-              isMutedRef.current = newMuted;
-            }}
-            className={cn(
-              "p-2.5 rounded-xl transition-all border",
-              isMuted ? "bg-red-500/20 border-red-500/40 text-red-500" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-            )}
-          >
-            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
         </div>
       ) : (
         <>
@@ -1183,7 +1807,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
               <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">System Status</span>
             </div>
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-3.5">
-              {status === 'active' ? 'Kern Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
+              {status === 'active' ? 'DT Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
             </span>
           </div>
 
@@ -1198,7 +1822,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
           <span className="text-[10px] font-mono text-primary/40">Stabil</span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Kern</span>
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">DT</span>
           <span className="text-[10px] font-mono text-primary/40">Aktiv</span>
         </div>
       </div>
@@ -1223,155 +1847,187 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
       <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-24 lg:pb-12">
         
         {/* Transcription Areas Group */}
-        <div className="absolute inset-0 pointer-events-none z-0 hidden lg:flex items-center justify-between px-12 xl:px-24">
-          {/* Kern Transcription Area (Left - Blue) */}
-          <motion.div 
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-neon-cyan/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
-          >
-            <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan/50" />
-            <div className="flex items-center gap-2 mb-2">
-              <Brain className="w-4 h-4 text-neon-cyan" />
-              <span className="text-[10px] font-black text-neon-cyan uppercase tracking-widest">Kern Analysis Live</span>
-            </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
-              <AnimatePresence mode="popLayout">
-                {kernTranscript.map((item) => (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className={cn(
-                      "text-xs sm:text-sm font-medium leading-relaxed",
-                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-cyan-50/70"
-                    )}
-                  >
-                    {item.text}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {activeSpeaker === 'Kern' && (
-                <motion.div 
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ repeat: Infinity, duration: 2 }}
-                  className="w-1.5 h-1.5 rounded-full bg-neon-cyan"
-                />
-              )}
-            </div>
-          </motion.div>
-
-          {/* Scout Transcription Area (Right - Green) */}
-          <motion.div 
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-green-500/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
-          >
-            <div className="absolute top-0 right-0 w-1 h-full bg-green-500/50" />
-            <div className="flex items-center gap-2 mb-2 justify-end">
-              <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Scout Intel Live</span>
-              <Search className="w-4 h-4 text-green-500" />
-            </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 text-right">
-              <AnimatePresence mode="popLayout">
-                {scoutTranscript.map((item) => (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className={cn(
-                      "text-xs sm:text-sm font-medium leading-relaxed",
-                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-green-50/70"
-                    )}
-                  >
-                    {item.text}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {activeSpeaker === 'Scout' && (
-                <div className="flex justify-end">
+        {status === 'active' && (
+          <div className="absolute inset-0 pointer-events-none z-0 flex items-center lg:justify-between px-6 lg:px-12 xl:px-24">
+            {/* DT Transcription Area (Left - Blue) */}
+            <motion.div 
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="hidden lg:flex w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-neon-cyan/20 rounded-xl p-6 backdrop-blur-md flex-col gap-4 relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan/50" />
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-neon-cyan" />
+                <span className="text-[10px] font-black text-neon-cyan uppercase tracking-widest">DT Analysis Live</span>
+              </div>
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
+                <AnimatePresence mode="popLayout">
+                  {dtTranscript.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={cn(
+                        "text-xs sm:text-sm font-medium leading-relaxed",
+                        item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-cyan-50/70"
+                      )}
+                    >
+                      {item.text}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                {activeSpeaker === 'DT' && (
                   <motion.div 
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="w-1.5 h-1.5 rounded-full bg-green-500"
+                    className="w-1.5 h-1.5 rounded-full bg-neon-cyan"
                   />
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
+                )}
+              </div>
+            </motion.div>
 
-        <div className="w-full max-w-2xl space-y-6 sm:space-y-8 text-center px-4 relative z-10">
-        <div className="flex flex-col items-center gap-12">
-          <div className="flex items-center gap-4 sm:gap-16">
-            {/* Kern Avatar */}
+            {/* Researcher Transcription Area (Right - Green) */}
+            <motion.div 
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="hidden lg:flex w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-green-500/20 rounded-xl p-6 backdrop-blur-md flex-col gap-4 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-1 h-full bg-green-500/50" />
+              <div className="flex items-center gap-2 mb-2 justify-end">
+                <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Researcher Intel Live</span>
+                <Search className="w-4 h-4 text-green-500" />
+              </div>
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 text-right">
+                <AnimatePresence mode="popLayout">
+                  {researcherTranscript.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={cn(
+                        "text-xs sm:text-sm font-medium leading-relaxed",
+                        item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-green-50/70"
+                      )}
+                    >
+                      {item.text}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                {activeSpeaker === 'Researcher' && (
+                  <div className="flex justify-end">
+                    <motion.div 
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ repeat: Infinity, duration: 2 }}
+                      className="w-1.5 h-1.5 rounded-full bg-green-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        <div className="w-full max-w-2xl space-y-4 sm:space-y-8 text-center px-4 relative z-10">
+        <div className="flex flex-col items-center gap-6 sm:gap-12">
+          <div className="flex items-center gap-6 sm:gap-16">
+            {/* DT Avatar */}
             <motion.div 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col items-center gap-4"
+              className="flex flex-col items-center gap-3 sm:gap-4"
             >
               <div 
                 className={cn(
-                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
-                  activeSpeaker === 'Kern' 
+                  "w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'DT' 
                     ? "border-neon-cyan shadow-[0_0_30px_rgba(34,211,238,0.4)] scale-110" 
-                    : "border-white/5 opacity-40"
+                    : "border-white/5 opacity-40 shrink-0"
                 )}
               >
                 <Brain className={cn(
-                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
-                  activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
+                  "w-8 h-8 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'DT' ? "text-neon-cyan" : "text-white/20"
                 )} />
-                {activeSpeaker === 'Kern' && (
+                {activeSpeaker === 'DT' && (
                   <div className="absolute -inset-2 rounded-full border border-neon-cyan/30 animate-pulse" />
                 )}
               </div>
               <span className={cn(
-                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
-                activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
-              )}>D.T. KERN</span>
+                "font-mono text-[9px] sm:text-xs tracking-widest transition-colors font-black",
+                activeSpeaker === 'DT' ? "text-neon-cyan" : "text-white/20"
+              )}>DT</span>
             </motion.div>
 
             {/* Central Brain Visualizer */}
-            <div className="w-[180px] h-[180px] sm:w-[300px] sm:h-[300px] relative">
+            <div className="w-[140px] h-[140px] sm:w-[300px] sm:h-[300px] relative">
               <div className={cn(
-                "absolute inset-0 blur-[60px] rounded-full scale-75 animate-pulse transition-colors duration-1000",
-                activeSpeaker === 'Scout' ? "bg-red-500/20" : "bg-neon-cyan/20"
+                "absolute inset-0 blur-[40px] sm:blur-[60px] rounded-full scale-75 animate-pulse transition-colors duration-1000",
+                activeSpeaker === 'Researcher' ? "bg-red-500/20" : "bg-neon-cyan/20"
               )} />
-              <LiquidMetal isActive={status === 'active'} />
+              <LiquidMetal 
+                isActive={status === 'active'} 
+                volume={volume.reduce((a, b) => a + b, 0) / volume.length / 100}
+              />
             </div>
 
-            {/* Scout Avatar */}
+            {/* Researcher Avatar */}
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col items-center gap-4"
+              className="flex flex-col items-center gap-3 sm:gap-4"
             >
               <div 
                 className={cn(
-                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
-                  activeSpeaker === 'Scout' 
+                  "w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'Researcher' 
                     ? "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)] scale-110" 
-                    : "border-white/5 opacity-40"
+                    : "border-white/5 opacity-40 shrink-0"
                 )}
               >
                 <Search className={cn(
-                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
-                  activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
+                  "w-8 h-8 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'Researcher' ? "text-red-500" : "text-white/20"
                 )} />
-                {activeSpeaker === 'Scout' && (
+                {activeSpeaker === 'Researcher' && (
                   <div className="absolute -inset-2 rounded-full border border-red-500/30 animate-pulse" />
                 )}
               </div>
               <span className={cn(
-                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
-                activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
-              )}>SCOUT AGENT</span>
+                "font-mono text-[9px] sm:text-xs tracking-widest transition-colors font-black",
+                activeSpeaker === 'Researcher' ? "text-red-500" : "text-white/20"
+              )}>RESEARCHER</span>
             </motion.div>
+          </div>
+
+          {/* Mobile Transcription Summary */}
+          <div className="lg:hidden w-full max-w-sm mt-4">
+            <AnimatePresence mode="wait">
+              {activeSpeaker && (
+                <motion.div
+                  key={activeSpeaker}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={cn(
+                    "p-4 rounded-2xl border backdrop-blur-md text-center",
+                    activeSpeaker === 'DT' ? "bg-neon-cyan/5 border-neon-cyan/20" : "bg-red-500/5 border-red-500/20"
+                  )}
+                >
+                  <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">
+                    {activeSpeaker === 'DT' ? 'DT analysiert...' : 'Researcher sucht...'}
+                  </p>
+                  <p className="text-xs font-bold text-white/90 leading-relaxed italic">
+                    "{activeSpeaker === 'DT' 
+                      ? (dtTranscript[dtTranscript.length - 1]?.text || '...') 
+                      : (researcherTranscript[researcherTranscript.length - 1]?.text || '...')}"
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -1526,7 +2182,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
               <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Initialisiere Kern...</p>
+              <p className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Initialisiere DT...</p>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Verbindung zum Digitalen Zwilling wird aufgebaut</p>
             </div>
             <button 
@@ -1560,12 +2216,81 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
               ))}
             </div>
 
-            <button 
-              onClick={startAnalysis}
-              className="w-full bg-white/5 hover:bg-white/10 text-primary border border-primary/20 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
-            >
-              Wöchentliche Analyse starten
-            </button>
+            {/* Screen Share Preview & OCR Overlay */}
+            <AnimatePresence>
+              {isScreenSharing && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="relative group bg-black/40 rounded-3xl overflow-hidden border border-white/5 aspect-video mx-auto max-w-lg mb-8"
+                >
+                  <video 
+                    ref={videoRef}
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    className="w-full h-full object-contain"
+                    onMouseDown={handleOCRMouseDown}
+                    onMouseMove={handleOCRMouseMove}
+                    onMouseUp={handleOCRMouseUp}
+                  />
+                  
+                  {isOCRMode && (
+                    <div className="absolute inset-0 bg-blue-500/10 cursor-crosshair pointer-events-none">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="bg-blue-600/90 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
+                          Text zum Vorlesen markieren
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selection Rectangle visual */}
+                  {selection && (isOCRMode || isDraggingOCR) && (
+                    <div 
+                      className="absolute border-2 border-blue-400 bg-blue-400/20 rounded shadow-[0_0_15px_rgba(37,99,235,0.4)] pointer-events-none z-50"
+                      style={{
+                        left: selection.x,
+                        top: selection.y,
+                        width: selection.w,
+                        height: selection.h
+                      }}
+                    />
+                  )}
+
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    <div className="px-3 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Live Desktop</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <button 
+                onClick={startAnalysis}
+                className="bg-white/5 hover:bg-white/10 text-primary border border-primary/20 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
+              >
+                Wöchentliche Analyse starten
+              </button>
+              
+              <button 
+                onClick={() => setIsOCRMode(!isOCRMode)}
+                className={cn(
+                  "py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border flex items-center justify-center gap-2",
+                  isOCRMode 
+                    ? "bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-500/20" 
+                    : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                )}
+                disabled={!isScreenSharing}
+              >
+                {isOCRMode ? <MousePointer2 className="w-4 h-4" /> : <Highlighter className="w-4 h-4" />}
+                {isOCRMode ? "Markiermodus aktiv" : "Fast Reader"}
+              </button>
+            </div>
 
             <div className="flex items-center justify-center gap-4 sm:gap-6">
               <button 
@@ -1679,6 +2404,22 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                 </button>
               </motion.div>
             )}
+
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] text-center"
+              >
+                {error}
+                <button 
+                  onClick={() => setError(null)}
+                  className="ml-2 underline hover:text-white transition-colors"
+                >
+                  OK
+                </button>
+              </motion.div>
+            )}
           </div>
         )}
 
@@ -1740,8 +2481,10 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
             <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-white/10">
               {processLogs
                 .filter(log => 
-                  log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) || 
-                  log.details?.toLowerCase().includes(logSearchQuery.toLowerCase())
+                  log.category !== 'audio' && (
+                    log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) || 
+                    log.details?.toLowerCase().includes(logSearchQuery.toLowerCase())
+                  )
                 )
                 .map((log) => (
                   <motion.div 
@@ -1768,10 +2511,10 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                         {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-[11px] font-bold mt-1.5 leading-relaxed">{log.message}</p>
+                    <p className="text-[11px] font-bold mt-1.5 leading-relaxed">{renderWithLinks(log.message)}</p>
                     {log.details && (
                       <p className="text-[9px] mt-1 opacity-60 font-mono break-all line-clamp-2 hover:line-clamp-none transition-all">
-                        {log.details}
+                        {renderWithLinks(log.details)}
                       </p>
                     )}
                   </motion.div>
@@ -1788,12 +2531,14 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
             <div className="p-4 border-t border-white/10 bg-white/[0.02] space-y-3">
               <div className="flex items-center justify-between px-1">
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Status Legende</span>
-                {interruptionCount > 0 && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                    <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Unterbrechungen</span>
-                    <span className="text-[10px] font-mono font-black text-orange-400">x {interruptionCount}</span>
-                  </div>
-                )}
+                
+                <button 
+                  onClick={() => setShowAudioDetail(true)}
+                  className="flex items-center gap-2 px-2 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg group hover:bg-orange-500/20 transition-all"
+                >
+                  <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Unterbrechungen</span>
+                  <span className="text-[10px] font-mono font-black text-orange-400">x {audioInterruptionCount}</span>
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
@@ -1832,7 +2577,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-white uppercase tracking-tight">Gesprächsverlauf</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">D.T. Kern Live Session</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">DT Live Session</p>
                   </div>
                 </div>
                 <button 
@@ -1888,7 +2633,7 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[9px] font-black uppercase tracking-widest opacity-40">
-                          {log.sender === 'User' ? 'Nutzer' : log.sender === 'System' ? 'System Sync' : 'D.T. Kern'}
+                          {log.sender === 'User' ? 'Nutzer' : log.sender === 'System' ? 'System Sync' : 'DT'}
                         </span>
                         <span className="text-[8px] font-mono opacity-30">
                           {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1952,6 +2697,118 @@ Führe den Podcast mit maximalem stimmlichen Kontrast!`;
                 </button>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Audio Detailed Overlay */}
+      <AnimatePresence>
+        {showAudioDetail && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            onClick={() => setShowAudioDetail(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="w-full max-w-2xl bg-slate-950 border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/[0.02]">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-500/20 flex items-center justify-center border border-orange-500/30">
+                    <Volume2 className="w-5 h-5 text-orange-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white uppercase tracking-tighter">Audio Protokoll</h2>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">System-Event Log & Streaming Stats</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAudioDetail(false)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
+                {processLogs.filter(l => l.category === 'audio').length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 opacity-20 text-white">
+                    <VolumeX className="w-12 h-12 mb-4" />
+                    <span className="text-xs font-black uppercase tracking-widest text-center">Keine Audio-Logs<br/>in dieser Session</span>
+                  </div>
+                ) : (
+                  processLogs.filter(l => l.category === 'audio').slice().reverse().map((log) => (
+                    <div 
+                      key={log.id} 
+                      className={cn(
+                        "p-4 rounded-2xl border transition-all",
+                        log.level === 'warning' 
+                        ? 'bg-orange-500/10 border-orange-500/20' 
+                        : 'bg-white/[0.03] border-white/10'
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg",
+                            log.level === 'warning' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
+                          )}>
+                            {log.message}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-600">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </div>
+                        {log.level === 'warning' && (
+                          <div className="flex items-center gap-1.5 text-[9px] font-black text-orange-500 uppercase tracking-widest animate-pulse">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>Interrupt Detected</span>
+                          </div>
+                        )}
+                      </div>
+                      {log.details && (
+                        <div className="flex flex-wrap gap-4 pt-3 border-t border-white/5">
+                          {log.details.split('|').map((stat, i) => {
+                            const [label, val] = stat.split(':');
+                            return (
+                              <div key={i} className="flex flex-col">
+                                <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">{label.trim()}</span>
+                                <span className="text-xs font-mono font-bold text-white/80">{val.trim()}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="p-6 border-t border-white/10 flex items-center justify-between bg-white/[0.02]">
+                <div className="flex gap-10">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Total Errors</span>
+                    <span className="text-xl font-black text-orange-500 tracking-tighter">{audioInterruptionCount}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Activity Logs</span>
+                    <span className="text-xl font-black text-white tracking-tighter">{processLogs.filter(l => l.category === 'audio').length}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAudioDetail(false)}
+                  className="px-8 py-3 bg-white text-black text-xs font-black uppercase rounded-2xl hover:bg-white/90 transition-all shadow-xl shadow-white/5"
+                >
+                  Fertig
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
