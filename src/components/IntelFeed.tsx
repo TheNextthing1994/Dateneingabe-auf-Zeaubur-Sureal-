@@ -240,13 +240,13 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({ items, onDelete, onUpdateS
                               </p>
                             </div>
 
-                            {/* Researcher Research */}
+                            {/* Scout Research */}
                             <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-2">
                               <div className="flex items-center gap-2 text-[9px] font-black text-blue-400 uppercase tracking-widest">
-                                <SearchIcon className="w-3 h-3" /> Researcher Research (Web)
+                                <SearchIcon className="w-3 h-3" /> Scout Research (Web)
                               </div>
                               <p className="text-[11px] text-slate-300 leading-relaxed">
-                                {item.research_armada.researcher_research}
+                                {item.research_armada.scout_research}
                               </p>
                             </div>
 

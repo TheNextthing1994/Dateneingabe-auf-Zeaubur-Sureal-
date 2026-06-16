@@ -85,7 +85,15 @@ class SurrealService {
    * Bypasses SDK table validation.
    */
   async saveSeed(data: any) {
-    return this.saveVaultItem('seeds', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `seeds:${data.id}`;
+    console.log('Saving seed to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save seed failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getSeeds(): Promise<any[]> {
@@ -113,7 +121,6 @@ class SurrealService {
       
       return records.map(item => {
         const fullId = item.id.toString();
-        const ts = typeof item.timestamp === 'string' ? new Date(item.timestamp).getTime() : (Number(item.timestamp) || 0);
         
         // Ensure category is valid for UI columns
         let category = item.category;
@@ -124,8 +131,8 @@ class SurrealService {
           else category = 'NOISE';
         }
 
-        return { ...item, id: fullId, rawId: fullId, category, timestamp: ts };
-      }).sort((a, b) => b.timestamp - a.timestamp);
+        return { ...item, id: fullId, rawId: fullId, category };
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     } catch (err: any) {
       if (err?.message?.includes('does not exist')) return [];
       console.error('Error in getSeeds:', err);
@@ -138,7 +145,15 @@ class SurrealService {
    * Bypasses SDK table validation.
    */
   async saveMission(data: any) {
-    return this.saveVaultItem('missions', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `missions:${data.id}`;
+    console.log('Saving mission to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save mission failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getMissions(): Promise<any[]> {
@@ -193,7 +208,15 @@ class SurrealService {
    * Saves a weekly task using a raw SurrealQL query.
    */
   async saveWeeklyTask(data: any) {
-    return this.saveVaultItem('weekly_tasks', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `weekly_tasks:${data.id}`;
+    console.log('Saving weekly task to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save weekly task failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getWeeklyTasks(): Promise<any[]> {
@@ -234,7 +257,15 @@ class SurrealService {
    * Saves a memory concept using a raw SurrealQL query.
    */
   async saveMemoryConcept(data: any) {
-    return this.saveVaultItem('memory_concepts', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `memory_concepts:${data.id}`;
+    console.log('Saving memory concept to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save memory concept failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getMemoryConcepts(): Promise<any[]> {
@@ -281,7 +312,15 @@ class SurrealService {
    * Billboard Items (Intel & Blocker)
    */
   async saveBillboardItem(data: any) {
-    return this.saveVaultItem('billboard_items', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `billboard_items:${data.id}`;
+    console.log('Saving billboard item to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save billboard item failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getBillboardItems(): Promise<any[]> {
@@ -319,19 +358,14 @@ class SurrealService {
 
   async saveLog(log: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    const shortId = log.id?.includes(':') ? log.id.split(':')[1] : log.id;
-    const { id: _, ...content } = log;
-    const query = `CREATE type::thing('logs', $id) CONTENT $content`;
-    return await (this.db as any).query(query, { id: shortId, content });
+    const fullId = log.id.includes(':') ? log.id : `logs:${log.id}`;
+    return await (this.db as any).query('INSERT INTO logs $data', { data: { ...log, id: fullId } });
   }
 
   async saveVideoSeed(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    const shortId = data.id?.includes(':') ? data.id.split(':')[1] : (data.id || Math.random().toString(36).substring(7));
-    const { id: _, ...content } = data;
-    console.log('Saving video seed to SurrealDB:', shortId);
-    const query = `CREATE type::thing('video_seeds', $id) CONTENT $content`;
-    return await (this.db as any).query(query, { id: shortId, content });
+    console.log('Saving video seed to SurrealDB:', data.id);
+    return await (this.db as any).query('INSERT INTO video_seeds ' + JSON.stringify(data));
   }
 
   async getVideoSeeds(): Promise<any[]> {
@@ -359,7 +393,15 @@ class SurrealService {
    * Intel Seeds (Educational YouTube Processing)
    */
   async saveIntelSeed(data: any) {
-    return this.saveVaultItem('intel_seeds', data);
+    if (!this.db) throw new Error('Not connected to SurrealDB');
+    const fullId = data.id.includes(':') ? data.id : `intel_seeds:${data.id}`;
+    console.log('Saving intel seed to SurrealDB:', fullId);
+    try {
+      return await (this.db as any).create(new StringRecordId(fullId), data);
+    } catch (err) {
+      console.error('SurrealDB: Save intel seed failed, trying update:', err);
+      return await (this.db as any).query(`UPDATE ${fullId} MERGE $data`, { data });
+    }
   }
 
   async getIntelSeeds(): Promise<any[]> {
@@ -479,15 +521,11 @@ class SurrealService {
           ...item, 
           id: cleanId, // Use clean ID for local state matching
           rawId: item.id?.toString(), // Keep full ID for DB operations
-          timestamp: ts,
+          timestamp: typeof ts === 'number' ? ts : Date.now(),
           navigator_infographic: infographic,
           supreme_decision: item.supreme_decision?.toString() || 'archive'
         };
-      }).sort((a, b) => {
-        const tA = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (Number(a.timestamp) || 0);
-        const tB = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (Number(b.timestamp) || 0);
-        return tB - tA;
-      });
+      }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       
       console.log('SurrealDB: Mapped', mapped.length, 'daily intels');
       return mapped;
@@ -563,19 +601,17 @@ class SurrealService {
   async initAgent(data: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
     const randomId = Math.random().toString(36).substring(7);
-    const query = `CREATE type::thing('agents', $id) CONTENT $content`;
-    return await (this.db as any).query(query, { id: randomId, content: data });
+    const fullId = `agents:${randomId}`;
+    return await (this.db as any).create(new StringRecordId(fullId), data);
   }
 
   async saveAgentLog(log: any) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    const randomId = Math.random().toString(36).substring(7);
-    const logData = {
+    const id = `agent_logs:${Math.random().toString(36).substring(7)}`;
+    return await (this.db as any).create(new StringRecordId(id), {
       ...log,
       timestamp: log.timestamp || Date.now()
-    };
-    const query = `CREATE type::thing('agent_logs', $id) CONTENT $content`;
-    return await (this.db as any).query(query, { id: randomId, content: logData });
+    });
   }
 
   async getAgentLogs(): Promise<any[]> {
@@ -598,14 +634,12 @@ class SurrealService {
 
   async saveAgentGoal(text: string) {
     if (!this.db) throw new Error('Not connected to SurrealDB');
-    const randomId = Math.random().toString(36).substring(7);
-    const goalData = {
+    const id = `agent_goals:${Math.random().toString(36).substring(7)}`;
+    return await (this.db as any).create(new StringRecordId(id), {
       text,
       status: 'Active',
       timestamp: Date.now()
-    };
-    const query = `CREATE type::thing('agent_goals', $id) CONTENT $content`;
-    return await (this.db as any).query(query, { id: randomId, content: goalData });
+    });
   }
 
   async getLatestGoal(): Promise<any | null> {
@@ -624,89 +658,6 @@ class SurrealService {
       return null;
     }
   }
-
-  /**
-   * Generic save method for vault items
-   */
-  private async saveVaultItem(table: string, data: any) {
-    if (!this.db) throw new Error('Not connected to SurrealDB');
-    const shortId = data.id?.includes(':') ? data.id.split(':')[1] : data.id;
-    // Strip ONLY id to avoid conflicts with record id in SurrealDB
-    const { id: _, ...cleanData } = data;
-    console.log(`[saveVaultItem] table=${table} record=`, JSON.stringify({ ...cleanData, id: shortId }, null, 2));
-    
-    try {
-      const query = `CREATE type::thing($table, $id) CONTENT $content`;
-      const result = await (this.db as any).query(query, { table, id: shortId, content: cleanData });
-      console.log(`[saveVaultItem] SurrealDB result=`, JSON.stringify(result, null, 2));
-      return result;
-    } catch (err) {
-      console.error(`SurrealDB: Save ${table} failed, trying update:`, err);
-      const query = `UPDATE type::thing($table, $id) MERGE $content`;
-      const result = await (this.db as any).query(query, { table, id: shortId, content: cleanData });
-      console.log(`[saveVaultItem] SurrealDB update result=`, JSON.stringify(result, null, 2));
-      return result;
-    }
-  }
-
-  /**
-   * Generic get method for vault items
-   */
-  private async getVaultItems(table: string): Promise<any[]> {
-    if (!this.db) throw new Error('Not connected to SurrealDB');
-    try {
-      const results = await (this.db as any).query(`SELECT * FROM ${table}`);
-      let records: any[] = [];
-      if (Array.isArray(results)) {
-        records = results[0]?.result || results[0] || [];
-      } else if (results && typeof results === 'object') {
-        records = (results as any).result || [];
-      }
-      if (!Array.isArray(records)) return [];
-      return records.map(item => ({
-        ...item,
-        id: item.id.toString(),
-        rawId: item.id.toString(),
-        timestamp: typeof item.timestamp === 'string' ? new Date(item.timestamp).getTime() : (Number(item.timestamp) || 0)
-      })).sort((a, b) => b.timestamp - a.timestamp);
-    } catch (err: any) {
-      if (err?.message?.includes('does not exist')) return [];
-      console.error(`Error in getVaultItems (${table}):`, err);
-      return [];
-    }
-  }
-
-  // Projects
-  async saveProject(data: any) { return this.saveVaultItem('projects', data); }
-  async getProjects() { return this.getVaultItems('projects'); }
-
-  // Insights (Erkenntnisse)
-  async saveErkenntnis(data: any) { return this.saveVaultItem('erkenntnisse', data); }
-  async getErkenntnisse() { return this.getVaultItems('erkenntnisse'); }
-
-  // Workflows
-  async saveWorkflow(data: any) { return this.saveVaultItem('workflows', data); }
-  async getWorkflows() { return this.getVaultItems('workflows'); }
-
-  // Ideas (Ideen)
-  async saveIdee(data: any) { return this.saveVaultItem('ideen', data); }
-  async getIdeen() { return this.getVaultItems('ideen'); }
-
-  // Clients (Kunden)
-  async saveKunde(data: any) { return this.saveVaultItem('kunden', data); }
-  async getKunden() { return this.getVaultItems('kunden'); }
-
-  // Goals (Ziele)
-  async saveZiel(data: any) { return this.saveVaultItem('ziele', data); }
-  async getZiele() { return this.getVaultItems('ziele'); }
-
-  // Academy
-  async saveAcademyItem(data: any) { return this.saveVaultItem('academy', data); }
-  async getAcademyItems() { return this.getVaultItems('academy'); }
-
-  // Toolbox
-  async saveToolboxItem(data: any) { return this.saveVaultItem('toolbox', data); }
-  async getToolboxItems() { return this.getVaultItems('toolbox'); }
 
   async subscribe(table: string, callback: (action: string, result: any) => void) {
     if (!this.db) throw new Error('Not connected to SurrealDB');

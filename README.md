@@ -1,27 +1,20 @@
-# D.T. Kern - System-Dokumentation
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-## Hermes-Verbindung konfigurieren
+# Run and deploy your AI Studio app
 
-D.T. Kern nutzt den externen Hermes-Agenten für komplexe Backend-Operationen, Tool-Execution und Langzeitgedächtnis. Standardmäßig ist das System so konfiguriert, dass es einen VPS unter Hostinger kontaktiert.
+This contains everything you need to run your app locally.
 
-### Umgebungsvariablen (.env)
+View your app in AI Studio: https://ai.studio/apps/eececcd9-b22e-4b9c-bdff-0b114a7b2afd
 
-Die folgenden Variablen können im AI Studio Settings-Menü oder in der `.env` Datei gesetzt werden:
+## Run Locally
 
-| Variable | Beschreibung | Standardwert |
-| :--- | :--- | :--- |
-| `HERMES_API_BASE_URL` | Öffentliche API-URL des Hermes VPS | `http://76.13.151.81:8642/v1` |
-| `HERMES_API_KEY` | Optionaler Bearer Token für den Zugriff | `(leer)` |
-| `HERMES_MODEL` | Das zu verwendende Modell auf dem VPS | `hermes-default` |
-| `HERMES_TIMEOUT_MS` | Timeout für API-Anfragen in ms | `30000` |
-| `HERMES_SESSION_PREFIX` | Präfix für Session-IDs (z.B. für DT-Interaktionen) | `dt_` |
+**Prerequisites:**  Node.js
 
-### Fehlerbehandlung & Fallback
 
-- **Verbindungsfehler (5xx, ECONNREFUSED, Timeout):** Das System erkennt dies automatisch und schaltet nahtlos auf den internen **Gemini Fallback** um, damit die Basisfunktion erhalten bleibt.
-- **Client-Fehler (4xx):** Diese werden nicht abgefangen, da sie meist auf falsche Konfiguration oder abgelaufene Sessions hindeuten.
-- **System-Status:** In der `LiveMode` UI zeigt ein kleiner Indikator (oben links) den aktuellen Status der Hermes-Verbindung an (Grün = Online, Rot = Offline/Fallback).
-
-### Sicherheitshinweis
-
-Falls die App über HTTPS läuft und der Hermes-VPS nur über HTTP erreichbar ist, tritt eine "Mixed Content" Warnung auf. Es wird dringend empfohlen, den Hermes-Agenten hinter einem Reverse Proxy (z.B. Nginx) mit SSL-Zertifikat zu betreiben.
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

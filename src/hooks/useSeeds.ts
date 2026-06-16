@@ -222,7 +222,7 @@ export function useSeeds(
       
       setLogs(prev => [...prev, {
         id: (Date.now() + 1).toString(),
-        sender: 'DT',
+        sender: 'D.T. Kern',
         text: `Analyse abgeschlossen: [${newItem.vaultId.toUpperCase()}] ${newItem.text} (Score: ${newItem.score.toFixed(1)}). Zugeordnet zu: ${INITIAL_PILLARS.find(p => p.id === newItem.pillarId)?.name || 'Unbekannt'}.`,
         timestamp: Date.now()
       }]);
@@ -344,7 +344,7 @@ export function useSeeds(
         showNotification(`${newItems.length} Seeds aus Datei extrahiert.`, 'success');
         setLogs(prev => [...prev, {
           id: Date.now().toString(),
-          sender: 'DT',
+          sender: 'D.T. Kern',
           text: `Deep-Analysis abgeschlossen. ${newItems.length} neue Seeds wurden im Vault gesichert.`,
           timestamp: Date.now()
         }]);

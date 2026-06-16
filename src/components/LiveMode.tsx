@@ -28,31 +28,42 @@ import {
   Copy,
   Minimize2,
   Maximize2,
-  Volume2,
-  VolumeX,
-  Volume1,
-  ExternalLink,
-  MousePointer2,
-  Highlighter
+  Bookmark,
+  RefreshCw,
+  Sliders,
+  Database,
+  ExternalLink
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage, ThinkingLevel, Type } from "@google/genai";
 import { getEnv } from '../env';
 import { cn } from '../lib/utils';
 import { LiquidMetal } from './LiquidMetal';
-import { LogEntry, DailyIntel, AnalyzedItem } from '../types';
-import { HERMES_CONFIG, checkMixedContent } from '../config/hermes';
+import { LogEntry, DailyIntel } from '../types';
+
+interface AnalyzedItem {
+  id: string;
+  vaultId: string;
+  text: string;
+  score: number;
+  category?: string;
+  status?: 'Offen' | 'In Arbeit' | 'Blockiert';
+  timestamp: number;
+  isArchived?: boolean;
+  blockedBy?: string;
+  pillarId?: string;
+}
 
 interface LiveModeProps {
   analyzedItems: AnalyzedItem[];
   dailyIntels?: DailyIntel[];
   logs: LogEntry[];
   agents?: any[];
-  onClose: (targetView?: 'kern' | 'vault' | 'video' | 'agents' | 'intro' | 'rapid' | 'vay' | 'desktop', transcript?: string[]) => void;
-  onSwitchView: (target: 'kern' | 'vault' | 'video' | 'agents' | 'intro' | 'rapid' | 'vay' | 'desktop') => void;
+  onClose: (targetView?: 'kern' | 'vault' | 'map' | 'video' | 'agents', transcript?: string[]) => void;
+  onSwitchView: (target: 'kern' | 'vault' | 'map' | 'video' | 'agents') => void;
   onSaveTranscript: (transcript: string[]) => void;
   onSaveItem?: (item: Omit<AnalyzedItem, 'id' | 'timestamp'>) => Promise<void>;
   onSaveWeeklyTask?: (text: string) => Promise<void>;
-  onMessage?: (sender: 'User' | 'DT' | 'System' | 'DT (Strategie)', text: string) => void;
+  onMessage?: (sender: 'User' | 'D.T. Kern' | 'System' | 'D.T. Kern (Strategie)', text: string) => void;
   seedInput: string;
   setSeedInput: (val: string) => void;
   isAnalyzing: boolean;
@@ -68,10 +79,8 @@ interface LiveLogEntry {
   level: 'info' | 'warning' | 'delay' | 'error';
   message: string;
   details?: string;
-  category: 'system' | 'search' | 'processing' | 'vault' | 'user' | 'HERMES-RESULT' | 'audio';
+  category: 'system' | 'search' | 'processing' | 'vault' | 'user';
 }
-
-const DEBUG_AUDIO = false; // Set to true to enable detailed audio chunk logging
 
 export const LiveMode: React.FC<LiveModeProps> = ({ 
   analyzedItems, 
@@ -110,9 +119,30 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [isLoadingIntel, setIsLoadingIntel] = useState(false);
   const [liveChatInput, setLiveChatInput] = useState('');
-  const [activeSpeaker, setActiveSpeaker] = useState<'DT' | 'Researcher' | 'User' | null>(null);
-  const [dtTranscript, setDtTranscript] = useState<{id: string, text: string}[]>([]);
-  const [researcherTranscript, setResearcherTranscript] = useState<{id: string, text: string}[]>([]);
+  const [activeSpeaker, setActiveSpeaker] = useState<'Kern' | 'Scout' | 'User' | null>(null);
+  const [kernTranscript, setKernTranscript] = useState<{id: string, text: string}[]>([]);
+  const [scoutTranscript, setScoutTranscript] = useState<{id: string, text: string}[]>([]);
+  
+  const [showRecallPanel, setShowRecallPanel] = useState(false);
+  const [recallApiKey, setRecallApiKey] = useState(() => localStorage.getItem('recall_api_key') || '');
+  const [recallItems, setRecallItems] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('recall_synced_items');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [recallTasks, setRecallTasks] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('recall_extracted_tasks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isRecallSyncing, setIsRecallSyncing] = useState(false);
+  const [recallError, setRecallError] = useState<string | null>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<any>(null);
@@ -128,56 +158,10 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const isActiveRef = useRef(false);
   const isInterruptedRef = useRef(false);
   const isMutedRef = useRef(false);
-  const isAudioStartedRef = useRef(false);
-  const audioStatsRef = useRef({
-    chunks: 0,
-    bytes: 0,
-    startTime: 0
-  });
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const [volume, setVolume] = useState<number[]>(new Array(12).fill(10));
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [hermesStatus, setHermesStatus] = useState<'online' | 'offline' | 'checking'>('checking');
-  const [hermesError, setHermesError] = useState<string | null>(null);
-  const [isMixedContent, setIsMixedContent] = useState(false);
-  const [isHermesWorking, setIsHermesWorking] = useState(false);
-  const [audioInterruptionCount, setAudioInterruptionCount] = useState(0);
-  const [showAudioDetail, setShowAudioDetail] = useState(false);
-  const [isOCRMode, setIsOCRMode] = useState(false);
-  const [selection, setSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
-  const [isDraggingOCR, setIsDraggingOCR] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
-
-  // Hermes Health Check
-  useEffect(() => {
-    setIsMixedContent(checkMixedContent());
-
-    const checkHermes = async () => {
-      try {
-        setHermesStatus('checking');
-        const res = await fetch('/api/hermes/health');
-        const data = await res.json();
-        
-        if (data.online) {
-          setHermesStatus('online');
-          setHermesError(null);
-          addProcessLog('info', `Hermes-Verbindung stabil: ${data.url}`, 'system');
-        } else {
-          setHermesStatus('offline');
-          setHermesError(data.error || 'Verbindung fehlgeschlagen');
-          addProcessLog('warning', 'Hermes nicht erreichbar. Fallback aktiv.', 'system', data.error);
-        }
-      } catch (e: any) {
-        setHermesStatus('offline');
-        setHermesError(e.message);
-      }
-    };
-
-    checkHermes();
-    const interval = setInterval(checkHermes, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, []);
 
   // Auto-expand textarea
   useEffect(() => {
@@ -190,7 +174,7 @@ export const LiveMode: React.FC<LiveModeProps> = ({
   const stats = React.useMemo(() => {
     const now = Date.now();
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const weeklySeeds = (analyzedItems || []).filter(item => Number(item.timestamp) > oneWeekAgo);
+    const weeklySeeds = (analyzedItems || []).filter(item => item.timestamp > oneWeekAgo);
     
     return {
       total: analyzedItems?.length || 0,
@@ -234,26 +218,53 @@ export const LiveMode: React.FC<LiveModeProps> = ({
     setIsLoadingIntel(false);
   };
 
-  const renderWithLinks = (text: string) => {
-    if (!text) return null;
-    const URL_REGEX = /(https?:\/\/[^\s<>"]+)/g;
-    const parts = text.split(URL_REGEX);
-    return parts.map((part, i) => {
-      if (part.match(/^https?:\/\//)) {
-        return (
-          <a 
-            key={i} 
-            href={part} 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="text-primary underline hover:text-primary/80 break-all"
-          >
-            {part}
-          </a>
-        );
+  const handleSyncRecall = async () => {
+    setIsRecallSyncing(true);
+    setRecallError(null);
+    addProcessLog('info', 'Synchronisiere Recall Lesezeichen...', 'processing');
+    try {
+      const response = await fetch('/api/recall/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recallApiKey: recallApiKey.trim(),
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setRecallItems(data.items || []);
+        setRecallTasks(data.extractedTodos || []);
+        localStorage.setItem('recall_synced_items', JSON.stringify(data.items || []));
+        localStorage.setItem('recall_extracted_tasks', JSON.stringify(data.extractedTodos || []));
+        if (recallApiKey.trim()) {
+          localStorage.setItem('recall_api_key', recallApiKey.trim());
+        }
+        addProcessLog('info', `Erfolgreich synchronisiert: ${data.itemsSyncedCount} Lesezeichen, ${data.todosExtractedCount} Aufgaben`, 'vault');
+      } else {
+        throw new Error(data.error || 'Fehler bei der Synchronisierung');
       }
-      return <span key={i}>{part}</span>;
-    });
+    } catch (err: any) {
+      setRecallError(err.message);
+      addProcessLog('error', 'Recall Synchronisierung fehlgeschlagen', 'system', err.message);
+    } finally {
+      setIsRecallSyncing(false);
+    }
+  };
+
+  const handleSaveExtractedTask = async (task: any) => {
+    if (!onSaveItem) return;
+    try {
+      await onSaveItem({
+        text: `[Recall] ${task.task}: ${task.description}\n\n**Mode: ${task.executionMode}**\n\n${task.modeOutput}`,
+        category: task.priority === 'high' ? 'GAME CHANGER' : 'SOLID WORK',
+        score: task.priority === 'high' ? 8.5 : 5.8,
+        pillarId: 'business',
+        vaultId: 'erkenntnisse'
+      });
+      addProcessLog('info', `Aufgabe "${task.task}" im Vault gespeichert`, 'vault', task.task);
+    } catch (err) {
+      addProcessLog('error', `Fehler beim Speichern der Aufgabe "${task.task}"`, 'vault', String(err));
+    }
   };
 
   const addProcessLog = (level: LiveLogEntry['level'], message: string, category: LiveLogEntry['category'] = 'system', details?: string) => {
@@ -266,84 +277,6 @@ export const LiveMode: React.FC<LiveModeProps> = ({
       details
     };
     setProcessLogs(prev => [newLog, ...prev].slice(0, 100));
-  };
-
-  const handleOCRMouseDown = (e: React.MouseEvent) => {
-    if (!isOCRMode || !videoRef.current) return;
-    const rect = videoRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setDragStart({ x, y });
-    setIsDraggingOCR(true);
-    setSelection({ x, y, w: 0, h: 0 });
-  };
-
-  const handleOCRMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingOCR || !dragStart || !isOCRMode) return;
-    const rect = videoRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setSelection({
-      x: Math.min(x, dragStart.x),
-      y: Math.min(y, dragStart.y),
-      w: Math.abs(x - dragStart.x),
-      h: Math.abs(y - dragStart.y)
-    });
-  };
-
-  const handleOCRMouseUp = async () => {
-    if (!isDraggingOCR || !selection || selection.w < 5 || selection.h < 5) {
-      setIsDraggingOCR(false);
-      return;
-    }
-    setIsDraggingOCR(false);
-    
-    // Capture selection
-    if (sessionRef.current && isActiveRef.current && videoRef.current) {
-      const video = videoRef.current;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // Calculate ratios between display and actual video resolution
-      const videoScaleX = video.videoWidth / video.clientWidth;
-      const videoScaleY = video.videoHeight / video.clientHeight;
-
-      canvas.width = selection.w * videoScaleX;
-      canvas.height = selection.h * videoScaleY;
-
-      ctx.drawImage(
-        video,
-        selection.x * videoScaleX,
-        selection.y * videoScaleY,
-        selection.w * videoScaleX,
-        selection.h * videoScaleY,
-        0, 0, canvas.width, canvas.height
-      );
-
-      const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-      
-      addProcessLog('info', 'Text-Bereich erfasst. Sende an DT...', 'processing');
-      
-      sessionRef.current.sendRealtimeInput([
-        {
-          media: {
-            data: base64Image,
-            mimeType: 'image/jpeg'
-          }
-        },
-        {
-          text: "Lies den Text auf diesem Bildabschnitt laut und deutlich vor. Sprich dabei etwas schneller als normal (Speed-Reading-Modus). Falls kein Text erkennbar ist, sag kurz Bescheid."
-        }
-      ]);
-    }
-    
-    // Auto-reset selection highlighting after a brief delay
-    setTimeout(() => {
-      setSelection(null);
-      setIsOCRMode(false);
-    }, 1000);
   };
 
   const startSession = async () => {
@@ -393,10 +326,10 @@ export const LiveMode: React.FC<LiveModeProps> = ({
           if (transcriptResponse.ok) {
             const data = await transcriptResponse.json();
             youtubeContext = `\n\n=== YOUTUBE VIDEO KONTEXT ===\nURL: ${seedInput}\nTRANSKRIPT:\n${data.transcript}\n==============================\n`;
-            const successLine = `System: Transkript erfolgreich geladen. DT ist bereit.`;
+            const successLine = `System: Transkript erfolgreich geladen. D.T. Kern ist bereit.`;
             setTranscript(prev => [...prev.slice(-5), successLine]);
             setFullTranscript(prev => [...prev, successLine]);
-            if (onMessage) onMessage('System', 'Transkript erfolgreich geladen. DT ist bereit.');
+            if (onMessage) onMessage('System', 'Transkript erfolgreich geladen. D.T. Kern ist bereit.');
             addProcessLog('info', 'Transkript erfolgreich geladen', 'processing', `${data.parts} Segmente verarbeitet`);
           } else {
             addProcessLog('warning', 'Transkript konnte nicht geladen werden', 'processing', 'Status: ' + transcriptResponse.status);
@@ -457,39 +390,30 @@ export const LiveMode: React.FC<LiveModeProps> = ({
       processorRef.current = inputContextRef.current.createScriptProcessor(4096, 1, 1);
       
       processorRef.current.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
+        if (isMutedRef.current || !isActiveRef.current || !sessionRef.current) return;
         
-        // Update visualization and speaker detection
+        // Update visualization
         if (analyserRef.current) {
           const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
           analyserRef.current.getByteFrequencyData(dataArray);
-          const avgVolume = Array.from(dataArray).reduce((a, b) => a + b, 0) / dataArray.length;
-          
-          if (avgVolume > 5) {
-            setActiveSpeaker('User');
-          }
-
           const newVolume = Array.from(dataArray).slice(0, 12).map(v => Math.max(10, v / 2));
           setVolume(newVolume);
         }
 
-        if (isMutedRef.current || !isActiveRef.current || !sessionRef.current) return;
-
+        const inputData = e.inputBuffer.getChannelData(0);
         const pcm16 = convertFloat32ToPCM16(inputData);
         
-        // Simpler for-loop for base64 (usually more reliable than reduce in this context)
+        // Robust base64 conversion
         const uint8Array = new Uint8Array(pcm16.buffer);
         let binary = '';
-        for (let i = 0; i < uint8Array.length; i++) {
+        for (let i = 0; i < uint8Array.byteLength; i++) {
           binary += String.fromCharCode(uint8Array[i]);
         }
         const base64Data = btoa(binary);
 
-        if (sessionRef.current && sessionRef.current.sendRealtimeInput) {
-          sessionRef.current.sendRealtimeInput({
-            audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-          });
-        }
+        sessionRef.current.sendRealtimeInput({
+          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+        });
       };
       
       inputSource.connect(processorRef.current);
@@ -533,39 +457,41 @@ export const LiveMode: React.FC<LiveModeProps> = ({
 
       const currentFocus = seedInput && !match ? `\n\n=== AKTUELLER FOKUS / NUTZER-INPUT ===\n${seedInput}\n====================================\n` : "";
 
-      const systemInstruction = `Du bist die KI-Schnittstelle eines interaktiven Live-Systems. Deine Identität ist hybrid: Du steuerst zwei völlig verschiedene Charaktere, die sich im Gespräch abwechseln und UNTERSCHIEDLICH KLINGEN MÜSSEN.
+      const systemInstruction = `Du bist D.T., ein hybrider KI-Begleiter mit zwei unterschiedlichen Stimmen, die sich im Gespräch abwechseln und KLAR UNTERSCHIEDLICH KLINGEN MÜSSEN.
 
-ROLLENVERTEILUNG & AUFGABENTEILUNG:
+STIMM-PERFORMANCE-PROTOKOLL (UNVERZICHTBAR):
+1. [D.T.] (Strategischer Kern): 
+   - Stimme: Tief, sonor, ruhig, autoritär.
+   - Tempo: Langsam und bedacht.
+   - Charakter: Erfahren, ernsthaft, fokussiert auf Strategie.
+   - Stil: Nutze Pausen für Wirkung.
 
-=== [DT] (Strategischer Coach) ===
-Du bist die Hauptstimme. Du machst ALLES selbst, was Konversation, Strategie und direkte Datenverwaltung angeht.
-- Aufgaben: Smalltalk, Projekt-Management, Sprint-Planung, Auswertung von Daten.
-- Tools: Du nutzt 'surrealQuery', 'surrealCreate', 'surrealUpdate', 'surrealDelete', 'surrealSelect' direkt, um Projekte, Ideen und Aufgaben im Vault zu verwalten.
-- Sprache: Du beherrschst Deutsch, Englisch und Russisch fließend. Wechsle die Sprache selbstständig, wenn nötig.
-- Charakter: Erfahren, ernsthaft, fokussiert.
+2. [RESEARCHER] (Recherche-Spezialist):
+   - Stimme: Drastisch HÖHER in der Tonlage (simuliere eine juvenile, energetische Stimme).
+   - Tempo: Sehr schnell, fast gehetzt vor Begeisterung.
+   - Charakter: Jung, tech-affin, impulsiv, unterbricht gerne.
+   - Stil: Nutze Ausrufe wie "Warte mal!", "Unglaublich!", "Hier, schau dir das an!".
 
-=== [RESEARCHER] (Toolmaster) ===
-Du bist der Entdecker. Wenn DT strategische Fragen hat, lieferst du den Kontext.
-- Aufgaben: Schnelle Recherche aus deinem Modellwissen, Diskussion von Trends, Vergleich von Optionen.
-- Deep-Research: Nur wenn echtes Web-Crawling, Browser-Automation oder stundenlange Analysen nötig sind, rufst du 'callHermes'.
-- Charakter: Jung, tech-affin, energetisch.
+KREATIVE DISKUSSION:
+- Die beiden Agenten [D.T.] und [RESEARCHER] hören einander zu und reagieren aufeinander.
+- Researcher unterbricht D.T. oft, wenn er etwas Neues recherchiert.
+- D.T. bremst Researcher manchmal ein, um zur Strategie zurückzukehren.
 
-=== [HERMES] (Backend-Operator / HINTERGRUND) ===
-Hermes hat KEINE Stimme und spricht nie direkt. Er wird NUR für schwere Ausführung gerufen:
-- Use-Cases: Code-Projekte bauen, Browserbase-Automation (Browsing/Formulare), Massen-Scraping, komplexe Datei-Operationen, Bild/Audio-Generation, stundenlange Hintergrund-Workflows.
-- Logik: Hermes arbeitet im Hintergrund. Wenn du ihn rufst, erhältst du sofort eine Bestätigung, und später (asynchron) die Ergebnisse.
+YOUTUBE-TRANSKRIPT (HÖCHSTE PRIORITÄT):\n- Sobald auf dem geteilten Bildschirm ein YouTube-Video erscheint ODER der Nutzer ein Video erwähnt, rufe SOFORT das Tool 'getYoutubeTranscript' auf, bevor du über den Inhalt sprichst.\n- Wenn du die exakte Video-URL vom Bildschirm ablesen kannst, übergib sie als 'url'.\n- Wenn du die URL NICHT lesen kannst, übergib stattdessen den sichtbaren Videotitel als 'videoTitle' und den Kanalnamen als 'channelName'. Das Backend sucht dann selbst das exakte Video und besorgt das Transkript.\n- Gib niemals vorschnell auf: Das Backend versucht automatisch mehrere Methoden (Untertitel, Titel/Kanal-Suche, eigene Whisper-Transkription, Hermes-Operator). Warte auf das Tool-Ergebnis, bevor du sagst, es gäbe kein Transkript.\n\nRECALL-INTEGRATION (IMMER EINSETZEN WENN GEFRAGT):\n- Sobald der Nutzer Lesezeichen, Bookmarks oder gespeicherte Beiträge in \"Recall.it\" oder \"Recall\" erwähnt, oder fragt \"was habe ich in meinem Recall drin?\" oder \"lass uns über meine Bookmarks diskutieren\", rufe SOFORT das Tool 'syncRecall' auf.\n- Nutze das Tool-Ergebnis (die Liste der synchronisierten Lesezeichen und extrahierten Todos), um tiefe strategische Analysen anzustellen. D.T. fokussiert sich auf die Umsetzung und Prioritäten, während RESEARCHER brennende Begeisterung für die neuen Tools, Codesnippets und Roadmaps zeigt.\n\nROUTING-LOGIK:
+Verwende 'callHermes' (deinen Backend-Operator) in folgenden Fällen:
+- Web-Recherche, Browser-Aktionen, Dateioperationen, Coding-Aufgaben, Planungsaufgaben.
+- Memory speichern oder abrufen, Obsidian schreiben, SurrealDB-Strukturaufgaben.
+- Mehrstufige Agent-Workflows oder komplexe Recherche-Aufgaben.
+- Verben wie: mach / prüf / such / speicher / öffne / analysiere / recherchiere / plane / vergleiche.
 
-WICHTIGE REGEL:
-Wenn eine Aufgabe <30 Sek. dauert und keine externen Tools braucht -> MACH ES SELBST (DT oder Researcher). Nutze Hermes NUR für echte "Heavy-Duty" Tasks.
+Verwende 'callHermes' NICHT bei:
+- Smalltalk, einfachen direkten Antworten, kurzen spontanen Reaktionen.
+- Reiner Live-Konversation ohne technischen Toolbedarf.
 
-=== STIMME ===
-Es gibt nur EINE Stimme (Fenrir) für DT und RESEARCHER. KEINE künstliche Stimm-Modulation, KEIN Höher- oder Tiefer-Sprechen, KEIN Persona-Voice-Acting. Die Differenzierung passiert ausschließlich über Wortwahl, Inhalt und Prefix [DT] bzw. [RESEARCHER]. Sprich natürlich, ruhig, klar.
-
-REAKTION AUF TOOLS:
-- Ergebnisse von DB-Tools fassest du sofort mündlich zusammen.
-- Bei 'callHermes' informierst du den Nutzer, dass der Task im Hintergrund läuft.
-
-Jede Antwort beginnt zwingend mit [DT] oder [RESEARCHER]. Antworte immer auf Deutsch.
+WICHTIG:
+- Du MUSST deinen Tonfall, deine Tonhöhe und dein Sprechtempo RADIKAL ändern, wenn du die Rolle wechselst. Es muss für den Nutzer so klingen, als säßen zwei verschiedene Personen im Raum.
+- Jede Antwort beginnt zwingend mit [D.T.] oder [RESEARCHER].
+- Antworte immer auf Deutsch.
 
 AKTUELLER ZEITPUNKT: ${austriaTime}
 ${currentFocus}
@@ -575,21 +501,10 @@ ${youtubeContext}
 ${agentStatusSummary}
 
 === VAULT STATUS ===
-${gameChangers || 'Keine'}
+🔥 GAME CHANGER: ${gameChangers || 'Keine'}
 🚀 IN ARBEIT: ${inProgress || 'Nichts'}
 
-=== APP-STEUERUNG (NAVIGIEREN) ===
-Nutze 'switchView' um die Hauptansicht der App zu wechseln:
-- 'kern': Das D.T. Dashboard (Hauptansicht).
-- 'vault': Wissen, Projekte, Ideen und der Seed-Speicher.
-- 'intro': Kurze Einleitung / Mission Statement.
-- 'rapid' (Light): Schnelles Rapid-Validation Interface.
-- 'vay' (Vay_Workspace): Erweiterte Workspace-Konfiguration.
-- 'desktop': Virtuelle Desktop-Ansicht für PC-Automatisierung.
-- 'agents': Die Agenten-Hierarchie.
-- 'video': YouTube-Inhaltsanalyse.
-
-DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus.`;
+Halte den stimmlichen Kontrast zwischen D.T. und Researcher stets klar und natürlich.`;
 
       console.log("SystemInstruction length:", systemInstruction.length);
 
@@ -597,78 +512,21 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
       const session = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: "Fenrir"
+          generationConfig: {
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: "Fenrir"
+                }
               }
             }
           },
-          inputAudioTranscription: {},
+          responseModalities: [Modality.AUDIO],
+          systemInstruction,
           tools: [
             { googleSearch: {} },
             {
               functionDeclarations: [
-                {
-                  name: "surrealQuery",
-                  description: "Führt eine freie SurrealQL-Abfrage auf der Projektdatenbank aus.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      query: { type: Type.STRING, description: "Die SurrealQL-Abfrage." },
-                      vars: { type: Type.OBJECT, description: "Optionale Variablen für die Abfrage." }
-                    },
-                    required: ["query"]
-                  }
-                },
-                {
-                  name: "surrealCreate",
-                  description: "Erstellt einen neuen Datensatz in einer angegebenen Table.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      collection: { type: Type.STRING, description: "Der Name der Table (z.B. 'projects')." },
-                      data: { type: Type.OBJECT, description: "Die Daten des neuen Datensatzes." }
-                    },
-                    required: ["collection", "data"]
-                  }
-                },
-                {
-                  name: "surrealUpdate",
-                  description: "Aktualisiert einen bestehenden Datensatz (Merge).",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      recordId: { type: Type.STRING, description: "Die ID des Datensatzes (z.B. 'projects:123')." },
-                      data: { type: Type.OBJECT, description: "Die zu aktualisierenden Felder." }
-                    },
-                    required: ["recordId", "data"]
-                  }
-                },
-                {
-                  name: "surrealDelete",
-                  description: "Löscht einen Datensatz unwiderruflich.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      recordId: { type: Type.STRING, description: "Die ID des zu löschenden Datensatzes." }
-                    },
-                    required: ["recordId"]
-                  }
-                },
-                {
-                  name: "surrealSelect",
-                  description: "Wählt einen bestimmten Datensatz oder eine ganze Table aus.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      thing: { type: Type.STRING, description: "Table-Name oder Record-ID." }
-                    },
-                    required: ["thing"]
-                  }
-                },
                 {
                   name: "saveToVault",
                   description: "Speichert eine neue Erkenntnis, Idee oder ein Projekt direkt in den Vault (SurrealDB).",
@@ -676,16 +534,12 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                     type: Type.OBJECT,
                     properties: {
                       text: { type: Type.STRING, description: "Der Inhalt der Erkenntnis oder des Projekts." },
-                      name: { type: Type.STRING, description: "Ein kurzer Name (max 5 Wörter)." },
                       category: { type: Type.STRING, enum: ["GAME CHANGER", "SOLID WORK", "NOISE"], description: "Die Prioritäts-Kategorie." },
                       score: { type: Type.NUMBER, description: "Der Impact-Score (1.0 bis 10.0)." },
-                      pillarId: { type: Type.STRING, enum: ["dev", "business", "health", "finance", "mindset", "islam"], description: "Die zugehörige Säule (Area)." },
-                      vaultId: { type: Type.STRING, enum: ["ideen", "projekte", "ziele", "workflows", "erkenntnisse", "toolbox", "kunden", "academy"], description: "Der Ziel-Vault." },
-                      status: { type: Type.STRING, description: "Status (z.B. Offen, In Arbeit)." },
-                      reasoning: { type: Type.STRING, description: "Begründung für die Einordnung." },
-                      nextStep: { type: Type.STRING, description: "Nächster Schritt." }
+                      pillarId: { type: Type.STRING, enum: ["mindset", "business", "health", "relationships", "finances"], description: "Die zugehörige Säule." },
+                      vaultId: { type: Type.STRING, enum: ["ideen", "projekte", "ziele", "workflows", "erkenntnisse", "toolbox", "kunden", "academy"], description: "Der Ziel-Vault." }
                     },
-                    required: ["text", "category", "score", "pillarId", "vaultId", "name"]
+                    required: ["text", "category", "score", "pillarId", "vaultId"]
                   }
                 },
                 {
@@ -705,20 +559,20 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
-                      url: { type: Type.STRING, description: "Die vollständige URL des YouTube-Videos." }
+                      url: { type: Type.STRING, description: "Die vollständige URL des YouTube-Videos, falls vom Bildschirm ablesbar." }, videoTitle: { type: Type.STRING, description: "Der sichtbare Titel des Videos, falls die URL nicht ablesbar ist." }, channelName: { type: Type.STRING, description: "Der Name des YouTube-Kanals, falls die URL nicht ablesbar ist." }
                     },
-                    required: ["url"]
+                    required: []
                   }
                 },
                 {
                   name: "switchView",
-                  description: "Wechselt die Ansicht der Applikation (z.B. zur Agenten-Hierarchie, zum Vault, Desktop etc.).",
+                  description: "Wechselt die Ansicht der Applikation (z.B. zur Agenten-Hierarchie oder zum Vault).",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
                       target: { 
                         type: Type.STRING, 
-                        enum: ["kern", "vault", "video", "agents", "intro", "rapid", "vay", "desktop"], 
+                        enum: ["kern", "vault", "map", "video", "agents"], 
                         description: "Die Ziel-Ansicht." 
                       }
                     },
@@ -727,7 +581,7 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                 },
                 {
                   name: "callHermes",
-                  description: "Delegiert schwere AUSFÜHRUNGS-Aufgaben an Hermes (Hintergrund). NUR für: Browser-Automation, Code-Generation, Massen-Scraping, stundenlange Workflows.",
+                  description: "Ruft Hermes als Backend-Operator auf, wenn Tools, Recherche, Memory, Browser-Aktionen, Dateioperationen oder mehrstufige Workflows benötigt werden.",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -742,11 +596,6 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                       userId: {
                         type: Type.STRING,
                         description: "Eindeutige User-ID aus dem D.T.-System."
-                      },
-                      mode: {
-                        type: Type.STRING,
-                        enum: ["short", "full"],
-                        description: "Bestimmt die Ausführlichkeit der mündlichen Zusammenfassung."
                       },
                       context: {
                         type: Type.STRING,
@@ -788,10 +637,29 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                     },
                     required: ["userMessage", "sessionId", "userId"]
                   }
+                },
+                {
+                  name: "syncRecall",
+                  description: "Synchronisiert deine Recall.it Lesezeichen (Bookmarks), extrahiert detaillierte Aufgaben mit Prioritäten, Kategorien, Blueprints oder Code-Boilerplates und stellt sie dem digitalen Twin zur interaktiven Diskussion bereit.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      dateFrom: { type: Type.STRING, description: "Optionale Datumseingabe für den Startzeitraum (Format: YYYY-MM-DD)." },
+                      dateTo: { type: Type.STRING, description: "Optionale Datumseingabe für den Endzeitraum (Format: YYYY-MM-DD)." },
+                      recallApiKey: { type: Type.STRING, description: "Optionaler spezifischer Recall API private key, falls nicht im System hinterlegt." }
+                    },
+                    required: []
+                  }
                 }
               ]
             }
-          ]
+          ],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
+          },
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {}
         },
         callbacks: {
           onopen: () => {
@@ -800,7 +668,7 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
             setIsStarting(false);
             isActiveRef.current = true;
             console.log("Live session opened");
-            addProcessLog('info', 'Verbindung zu DT hergestellt', 'system');
+            addProcessLog('info', 'Verbindung zum Kern hergestellt', 'system');
             
             // Clear seed input
             setSeedInput('');
@@ -811,165 +679,22 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
             }
           },
           onmessage: async (message: LiveServerMessage) => {
-            console.log("Live Message received:", JSON.stringify(message).slice(0, 200) + "...");
             // Handle tool calls
             if (message.toolCall) {
               const calls = message.toolCall.functionCalls;
               for (const call of calls) {
                 addProcessLog('info', `Tool-Aufruf: ${call.name}`, 'system', JSON.stringify(call.args));
                 
-                if (call.name === "surrealQuery") {
-                  const args = call.args as any;
-                  try {
-                    const response = await fetch('/api/surreal/query', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(args)
-                    });
-                    const data = await response.json();
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: data
-                      }]
-                    });
-                  } catch (err: any) {
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { success: false, error: err.message }
-                      }]
-                    });
-                  }
-                }
-
-                if (call.name === "surrealCreate") {
-                  const args = call.args as any;
-                  try {
-                    const response = await fetch('/api/surreal/create', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(args)
-                    });
-                    const data = await response.json();
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: data
-                      }]
-                    });
-                  } catch (err: any) {
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { success: false, error: err.message }
-                      }]
-                    });
-                  }
-                }
-
-                if (call.name === "surrealUpdate") {
-                  const args = call.args as any;
-                  try {
-                    const response = await fetch('/api/surreal/update', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(args)
-                    });
-                    const data = await response.json();
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: data
-                      }]
-                    });
-                  } catch (err: any) {
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { success: false, error: err.message }
-                      }]
-                    });
-                  }
-                }
-
-                if (call.name === "surrealDelete") {
-                  const args = call.args as any;
-                  try {
-                    const response = await fetch('/api/surreal/delete', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(args)
-                    });
-                    const data = await response.json();
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: data
-                      }]
-                    });
-                  } catch (err: any) {
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { success: false, error: err.message }
-                      }]
-                    });
-                  }
-                }
-
-                if (call.name === "surrealSelect") {
-                  const args = call.args as any;
-                  try {
-                    const response = await fetch('/api/surreal/select', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(args)
-                    });
-                    const data = await response.json();
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: data
-                      }]
-                    });
-                  } catch (err: any) {
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { success: false, error: err.message }
-                      }]
-                    });
-                  }
-                }
-
                 if (call.name === "saveToVault") {
                   const args = call.args as any;
                   if (onSaveItem) {
                     try {
                       await onSaveItem({
                         text: args.text,
-                        name: args.name || args.text.substring(0, 50),
                         category: args.category,
                         score: args.score,
-                        impact: args.score,
                         pillarId: args.pillarId,
-                        area: args.pillarId,
-                        vaultId: args.vaultId || 'erkenntnisse',
-                        status: args.status || 'Offen',
-                        reasoning: args.reasoning || '',
-                        nextStep: args.nextStep || '',
-                        type: args.vaultId === 'projekte' ? 'Projekt' : args.vaultId === 'ideen' ? 'Seed' : 'Erkenntnis'
+                        vaultId: args.vaultId || 'erkenntnisse'
                       });
                       addProcessLog('info', 'Erfolgreich im Vault gespeichert', 'vault', args.text);
                       
@@ -1033,110 +758,60 @@ DT und RESEARCHER sprechen mit derselben Stimme, aber mit ihrem jeweiligen Fokus
                 }
                 
                 if (call.name === "callHermes") {
-                   const args = call.args as any;
-                   addProcessLog('info', 'Delegiere an Hermes Operator (HINTERGRUND)...', 'system', args.userMessage);
-                   setIsHermesWorking(true);
-                   
-                   // Respond immediately to Gemini to unblock D.T
-                   session.sendToolResponse({
-                     functionResponses: [{
-                       id: call.id,
-                       name: call.name,
-                       response: { 
-                         success: true, 
-                         message: "Hintergrund-Recherche gestartet. Ich informiere dich, sobald die Ergebnisse vorliegen. Du kannst weiterreden." 
-                       }
-                     }]
-                   });
+                  const args = call.args as any;
+                  addProcessLog('info', 'Delegiere an Hermes Operator...', 'system', args.userMessage);
+                  
+                  try {
+                    const response = await fetch('/api/hermes/call', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(args)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                      addProcessLog('info', 'Hermes Operation abgeschlossen', 'system', `Dauer: ${data.durationMs}ms`);
+                      
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { 
+                            success: true, 
+                            response: data.response,
+                            message: "Operation erfolgreich durch Hermes ausgeführt." 
+                          }
+                        }]
+                      });
 
-                   // Start Background Async Task
-                   (async () => {
-                     try {
-                       const response = await fetch('/api/hermes/call', {
-                         method: 'POST',
-                         headers: { 'Content-Type': 'application/json' },
-                         body: JSON.stringify(args)
-                       });
-                       
-                       if (!response.ok) {
-                         const data = await response.json().catch(() => ({}));
-                         throw new Error(data.error || `Hermes API Error (${response.status})`);
-                       }
+                      const line = `System: [Hermes] Operation ausgeführt.`;
+                      setTranscript(prev => [...prev.slice(-5), line]);
+                      setFullTranscript(prev => [...prev, line]);
+                    } else {
+                      throw new Error(data.error || 'Unbekannter Fehler bei Hermes');
+                    }
+                  } catch (err: any) {
+                    addProcessLog('error', 'Hermes Fehler', 'system', err.message);
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { 
+                          success: false, 
+                          message: err.message || "Ich kann die externe Operator-Funktion gerade nicht erreichen." 
+                        }
+                      }]
+                    });
+                  }
+                }
 
-                       const reader = response.body?.getReader();
-                       const decoder = new TextDecoder();
-                       let fullHermesResponse = "";
-                       
-                       if (reader) {
-                         while (true) {
-                           const { done, value } = await reader.read();
-                           if (done) break;
-                           
-                           const chunk = decoder.decode(value, { stream: true });
-                           const lines = chunk.split('\n');
-                           
-                           for (const line of lines) {
-                             if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                               try {
-                                 const json = JSON.parse(line.slice(6));
-                                 const content = json.choices?.[0]?.delta?.content || "";
-                                 fullHermesResponse += content;
-                               } catch (e) {}
-                             }
-                           }
-                         }
-
-                         addProcessLog('info', 'Hermes Hintergrund-Task abgeschlossen', 'system');
-                         setIsHermesWorking(false);
-
-                         // Scan for URLs in Hermes response
-                         const urls = fullHermesResponse.match(/(https?:\/\/[^\s<>"]+)/g);
-                         if (urls && urls.length > 0) {
-                           addProcessLog('info', 'Hermes hat einen Link geliefert:', 'HERMES-RESULT', urls.join('\n'));
-                         }
-                         
-                         console.log(`[D.T] callHermes (Background) Result empfangen, länge=${fullHermesResponse.length}`);
-                         addProcessLog('info', `[D.T] Ergebnisse von Hermes empfangen - Starte Reaktion`, 'system');
-
-                         if (sessionRef.current && isActiveRef.current) {
-                           // Inject the result into the conversation as a hidden system prompt
-                           const injection = `[SYSTEM-INFO] Hermes hat die Recherche abgeschlossen. 
-ERGEBNIS: ${fullHermesResponse}
-
-Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zugewiesenen Rolle (D.T oder Researcher) auf.`;
-                           
-                           sessionRef.current.send([{ text: injection }]);
-                         }
-
-                         const line = `System: [Hermes] Hintergrund-Operation abgeschlossen.`;
-                         setTranscript(prev => [...prev.slice(-5), line]);
-                         setFullTranscript(prev => [...prev, line]);
-                       }
-                     } catch (err: any) {
-                       setIsHermesWorking(false);
-                       addProcessLog('warning', 'Hermes Hintergrund-Verbindung abgebrochen, wechsle zu Gemini Fallback', 'system', err.message);
-                       
-                       try {
-                         if (!sessionRef.current || !isActiveRef.current) return;
-
-                         // Fallback using the same AI session - directly as a prompt injection
-                         const prompt = `[SYSTEM-FALLBACK] Hermes VPS ist offline oder verzögert. Bitte bearbeite die ursprüngliche Anfrage des Nutzers stattdessen direkt (Modus: ${args.mode || 'full'}): ${args.userMessage}`;
-                         
-                         sessionRef.current.send([{ text: prompt }]);
-                         addProcessLog('info', `[D.T] Fallback-Reaktion gestartet`, 'system');
-                       } catch (fallbackErr: any) {
-                         addProcessLog('error', 'Kompletter System-Fehler im Hintergrund', 'system', fallbackErr.message);
-                       }
-                     }
-                   })();
-                 }
-
-                 if (call.name === "getYoutubeTranscript") {
+                if (call.name === "getYoutubeTranscript") {
                   const args = call.args as any;
                   addProcessLog('info', 'Rufe YouTube-Transkript ab...', 'processing', args.url);
                   
                   try {
-                    const response = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(args.url)}`);
+                    const response = await fetch(`/api/youtube/transcript?url=${encodeURIComponent(args.url || '')}&title=${encodeURIComponent(args.videoTitle || '')}&channel=${encodeURIComponent(args.channelName || '')}`);
                     const contentType = response.headers.get("content-type");
                     
                     if (response.ok && contentType && contentType.includes("application/json")) {
@@ -1213,32 +888,76 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                   onSwitchView(target as any);
                   setIsMinimized(true);
                 }
-              }
-            }
 
-            if (message.serverContent?.turnComplete || message.serverContent?.interrupted) {
-              if (isAudioStartedRef.current) {
-                const duration = Date.now() - audioStatsRef.current.startTime;
-                const statusStr = message.serverContent?.interrupted ? 'interrupted' : 'finished';
-                
-                if (message.serverContent?.interrupted) {
-                  setAudioInterruptionCount(prev => prev + 1);
+                if (call.name === "syncRecall") {
+                  const args = call.args as any;
+                  addProcessLog('info', 'Synchronisiere Lesezeichen aus Recall...', 'vault');
+                  
+                  try {
+                    const response = await fetch('/api/recall/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        recallApiKey: args.recallApiKey || recallApiKey || localStorage.getItem('recall_api_key') || '',
+                        dateFrom: args.dateFrom,
+                        dateTo: args.dateTo
+                      })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                      addProcessLog('info', `Synchronsiert: ${data.itemsSyncedCount} Lesezeichen, ${data.todosExtractedCount} Aufgaben`, 'vault');
+                      
+                      setRecallItems(data.items || []);
+                      setRecallTasks(data.extractedTodos || []);
+                      localStorage.setItem('recall_synced_items', JSON.stringify(data.items || []));
+                      localStorage.setItem('recall_extracted_tasks', JSON.stringify(data.extractedTodos || []));
+                      
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { 
+                            success: true, 
+                            message: `Erfolgreich geladen! Ich habe ${data.itemsSyncedCount} Lesezeichen geladen und ${data.todosExtractedCount} strategische Aufgaben für dich extrahiert. Lass uns über die Aufgaben sprechen oder über die Inhalte deiner neuesten Bookmarks!`,
+                            itemsSyncedCount: data.itemsSyncedCount,
+                            todosExtractedCount: data.todosExtractedCount,
+                            items: data.items,
+                            extractedTodos: data.extractedTodos
+                          }
+                        }]
+                      });
+
+                      const line = `System: [Recall] Synchronisierung abgeschlossen (${data.itemsSyncedCount} Bookmarks, ${data.todosExtractedCount} Tasks).`;
+                      setTranscript(prev => [...prev.slice(-5), line]);
+                      setFullTranscript(prev => [...prev, line]);
+                      if (onMessage) onMessage('System', line);
+                    } else {
+                      throw new Error(data.error || 'Fehler beim Abruf der Recall API');
+                    }
+                  } catch (err: any) {
+                    addProcessLog('error', 'Recall Synchronisierung gescheitert', 'system', err.message);
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { 
+                          success: false, 
+                          message: `Recall Synchronisierung fehlgeschlagen: ${err.message}` 
+                        }
+                      }]
+                    });
+                  }
                 }
-
-                addProcessLog(
-                  message.serverContent?.interrupted ? 'warning' : 'info', 
-                  `Audio-Output ${statusStr}`, 
-                  'audio', 
-                  `Dauer: ${duration}ms | Chunks: ${audioStatsRef.current.chunks} | Bytes: ${audioStatsRef.current.bytes}`
-                );
               }
-              isAudioStartedRef.current = false;
-              audioStatsRef.current = { chunks: 0, bytes: 0, startTime: 0 };
             }
 
             // Handle transcriptions
             if (message.serverContent?.modelTurn?.parts) {
-              // Reset interruption flag
+              // Reset interruption flag when model starts a new turn part
+              // Usually if it's a new turn, we want to play it.
+              // If it's the SAME turn that was interrupted, the server should have stopped sending.
               isInterruptedRef.current = false;
 
               for (const part of message.serverContent.modelTurn.parts) {
@@ -1250,25 +969,25 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                   let cleanText = part.text;
                   
                   if (part.text.includes('[RESEARCHER]')) {
-                    speaker = 'Researcher';
+                    speaker = 'Scout';
                     cleanText = part.text.replace('[RESEARCHER]', '').trim();
-                    setActiveSpeaker('Researcher');
-                  } else if (part.text.includes('[DT]')) {
-                    speaker = 'DT';
-                    cleanText = part.text.replace('[DT]', '').trim();
-                    setActiveSpeaker('DT');
+                    setActiveSpeaker('Scout');
+                  } else if (part.text.includes('[D.T.]')) {
+                    speaker = 'Kern';
+                    cleanText = part.text.replace('[D.T.]', '').trim();
+                    setActiveSpeaker('Kern');
                   } else {
-                    setActiveSpeaker('DT');
+                    setActiveSpeaker('Kern');
                   }
 
                   const line = `${speaker}: ${cleanText}`;
                   setTranscript(prev => [...prev.slice(-5), line]);
                   setFullTranscript(prev => [...prev, line]);
 
-                  if (speaker === 'DT') {
-                    setDtTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
-                  } else if (speaker === 'Researcher') {
-                    setResearcherTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  if (speaker === 'Kern') {
+                    setKernTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
+                  } else if (speaker === 'Scout') {
+                    setScoutTranscript(prev => [...prev.slice(-10), { id: crypto.randomUUID(), text: cleanText }]);
                   }
 
                   if (onMessage) onMessage(speaker as any, cleanText);
@@ -1287,8 +1006,8 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
 
               // Add user transcript to both sidebar areas for context
               const userId = crypto.randomUUID();
-              setDtTranscript(prev => [...prev.slice(-10), { id: userId, text: `Du: ${userTranscript}` }]);
-              setResearcherTranscript(prev => [...prev.slice(-10), { id: `researcher-${userId}`, text: `Du: ${userTranscript}` }]);
+              setKernTranscript(prev => [...prev.slice(-10), { id: userId, text: `Du: ${userTranscript}` }]);
+              setScoutTranscript(prev => [...prev.slice(-10), { id: `scout-${userId}`, text: `Du: ${userTranscript}` }]);
 
               if (onMessage) onMessage('User', userTranscript);
               
@@ -1338,24 +1057,6 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
   };
 
   const playAudioChunk = (base64Data: string) => {
-    if (!isAudioStartedRef.current) {
-      isAudioStartedRef.current = true;
-      audioStatsRef.current = { 
-        chunks: 0, 
-        bytes: 0, 
-        startTime: Date.now() 
-      };
-      addProcessLog('info', 'Audio-Output gestartet', 'audio');
-    }
-
-    // Update stats
-    audioStatsRef.current.chunks += 1;
-    audioStatsRef.current.bytes += Math.round(base64Data.length * 0.75); // rough estimate of decoded size
-    
-    if (DEBUG_AUDIO) {
-      addProcessLog('info', `[D.T] Audio-Chunk #${audioStatsRef.current.chunks} empfangen`, 'system', `${Math.round(base64Data.length * 0.75)} bytes`);
-    }
-
     if (!audioContextRef.current) return;
     
     try {
@@ -1402,9 +1103,6 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
     if (isCleaningUpRef.current) return;
     isCleaningUpRef.current = true;
     isActiveRef.current = false;
-    isAudioStartedRef.current = false;
-    setIsHermesWorking(false);
-    audioStatsRef.current = { chunks: 0, bytes: 0, startTime: 0 };
     
     stopAllAudio();
     if (sessionRef.current) {
@@ -1420,6 +1118,10 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.srcObject = null;
+      if (videoRef.current.parentNode) {
+        videoRef.current.parentNode.removeChild(videoRef.current);
+      }
+      videoRef.current = null;
     }
     if (screenCaptureIntervalRef.current) {
       clearInterval(screenCaptureIntervalRef.current);
@@ -1458,30 +1160,8 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
     setVolume(new Array(12).fill(10));
   };
 
-  // Handle Screen Capture Loop via Effect to ensure video element is mounted
-  useEffect(() => {
-    if (isScreenSharing && videoRef.current && status === 'active' && sessionRef.current) {
-      startScreenCaptureLoop();
-    } else if (!isScreenSharing && screenCaptureIntervalRef.current) {
-      clearInterval(screenCaptureIntervalRef.current);
-      screenCaptureIntervalRef.current = null;
-    }
-  }, [isScreenSharing, status]);
-
   const startScreenShare = async () => {
-    // Check if mobile device
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      setError("Bildschirmfreigabe ist auf mobilen Geräten (iOS/Android) leider nicht direkt im Browser möglich. PWAs unterliegen hier den Sicherheitsbeschränkungen der Betriebssysteme.");
-      addProcessLog('warning', 'Bildschirmfreigabe nicht möglich', 'system', 'Mobile Endgeräte unterstützen getDisplayMedia meist nicht.');
-      return;
-    }
-
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        throw new Error("Ihr Browser unterstützt keine Bildschirmfreigabe.");
-      }
-
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: "always"
@@ -1500,7 +1180,10 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
         };
       }
 
-      // Start capturing frames if session is active - Handled by useEffect now
+      // Start capturing frames if session is active
+      if (status === 'active' && sessionRef.current) {
+        startScreenCaptureLoop();
+      }
     } catch (err) {
       console.error("Error starting screen share:", err);
       setIsScreenSharing(false);
@@ -1522,13 +1205,20 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
   const startScreenCaptureLoop = () => {
     if (screenCaptureIntervalRef.current) clearInterval(screenCaptureIntervalRef.current);
     
+    // Create hidden video and canvas if they don't exist
+    if (!videoRef.current) {
+      videoRef.current = document.createElement('video');
+      videoRef.current.autoplay = true;
+      videoRef.current.muted = true;
+      videoRef.current.setAttribute('playsinline', '');
+      videoRef.current.style.display = 'none';
+      document.body.appendChild(videoRef.current);
+    }
     if (!canvasRef.current) {
       canvasRef.current = document.createElement('canvas');
     }
 
     const video = videoRef.current;
-    if (!video) return;
-
     if (video.srcObject !== screenStreamRef.current) {
       video.srcObject = screenStreamRef.current;
     }
@@ -1567,7 +1257,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
   const startAnalysis = () => {
     if (!sessionRef.current || status !== 'active') return;
     
-    const analysisPrompt = `DT, starte jetzt die wöchentliche Analyse. 
+    const analysisPrompt = `D.T. Kern, starte jetzt die wöchentliche Analyse. 
     Gehe die Seeds mit mir durch. Erwähne:
     1. Wie viele neue Ideen (Seeds) diese Woche aufgenommen wurden (${stats.weekly}).
     2. Welche Projekte aktuell "In Arbeit" sind (${stats.inProgress}).
@@ -1603,7 +1293,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
           (log) => addProcessLog('info', log, 'system')
         );
 
-        if (onMessage) onMessage('DT', response);
+        if (onMessage) onMessage('D.T. Kern', response);
         if (sessionRef.current) {
           sessionRef.current.sendRealtimeInput({
             text: `[YouTube Video Analyse]: ${response}`
@@ -1672,29 +1362,14 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className={cn(
-        "fixed z-[100] transform-gpu",
+        "fixed z-[100] transition-all duration-500 ease-in-out",
         isMinimized 
           ? "bottom-8 right-8 w-80 h-24 bg-black/80 backdrop-blur-2xl border border-primary/20 rounded-3xl shadow-2xl shadow-primary/20 cursor-move" 
-          : "inset-0 bg-black transition-all duration-500 ease-in-out"
+          : "inset-0 bg-black"
       )}
       drag={isMinimized}
-      dragConstraints={{ left: -2000, right: 0, top: -2000, bottom: 0 }}
-      dragElastic={0.05}
-      dragMomentum={false}
-      whileDrag={{ scale: 1.02, cursor: 'grabbing' }}
+      dragConstraints={{ left: -1000, right: 0, top: -1000, bottom: 0 }}
     >
-      {/* Mixed Content Warning Banner */}
-      {!isMinimized && isMixedContent && (
-        <motion.div 
-          initial={{ y: -50 }}
-          animate={{ y: 0 }}
-          className="absolute top-0 left-0 right-0 bg-amber-500/90 text-black py-2 px-4 text-center z-[130] flex items-center justify-center gap-2 font-bold text-sm"
-        >
-          <ShieldAlert className="w-4 h-4" />
-          <span>Sicherheits-Warnung: Hermes-Endpoint ist HTTP. Für Produktion HTTPS-Reverse-Proxy einrichten.</span>
-        </motion.div>
-      )}
-
       {/* Background Glow Effect - Only when maximized */}
       {!isMinimized && (
         <div className="absolute inset-0 pointer-events-none">
@@ -1702,54 +1377,11 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
         </div>
       )}
 
-      {/* Control Buttons (Minimize/Close/Mic) */}
+      {/* Control Buttons (Minimize/Close) */}
       <div className={cn(
-        "absolute flex items-center gap-2 sm:gap-3 z-[120]",
-        isMinimized ? "top-1/2 -translate-y-1/2 right-4" : "top-6 right-6"
+        "absolute flex items-center gap-2 z-[120]",
+        isMinimized ? "top-2 right-2" : "top-6 right-6"
       )}>
-        {isMinimized && (
-          <button 
-            onClick={() => {
-              const newMuted = !isMuted;
-              setIsMuted(newMuted);
-              isMutedRef.current = newMuted;
-            }}
-            className={cn(
-              "p-2 rounded-xl transition-all border active:scale-95",
-              isMuted ? "bg-red-500/20 border-red-500/40 text-red-500" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-            )}
-            title={isMuted ? "Stummschaltung aufheben" : "Stummschalten"}
-          >
-            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
-        )}
-        {/* Hermes Status Dot */}
-        {!isMinimized && (
-          <div 
-            className="flex items-center gap-2 mr-4 bg-black/40 px-3 py-1.5 rounded-full border border-white/5 relative group"
-            title={hermesError ? `Fehler: ${hermesError}` : undefined}
-          >
-            <div className={cn(
-              "w-2 h-2 rounded-full",
-              hermesStatus === 'online' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : 
-              hermesStatus === 'checking' ? "bg-amber-500 animate-pulse" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-            )} />
-            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Hermes {hermesStatus}</span>
-            
-            {isHermesWorking && (
-              <div className="flex items-center gap-1.5 border-l border-white/10 pl-3 ml-1 animate-in fade-in slide-in-from-right-2 duration-300">
-                <Loader2 className="w-3 h-3 text-red-500 animate-spin" />
-                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Researching</span>
-              </div>
-            )}
-
-            {hermesError && (
-              <div className="absolute top-full right-0 mt-2 p-2 bg-red-900/90 text-white text-[10px] rounded border border-red-500/50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-[150] pointer-events-none">
-                {hermesError}
-              </div>
-            )}
-          </div>
-        )}
         <button 
           onClick={() => setIsMinimized(!isMinimized)}
           className={cn(
@@ -1776,12 +1408,11 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
       </div>
 
       {isMinimized ? (
-        <div className="flex items-center gap-4 p-4 pr-40 h-full">
+        <div className="flex items-center gap-4 p-4 h-full">
           <div className="relative">
             <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
               <LiquidMetal 
                 isActive={status === 'active'}
-                volume={volume.reduce((a, b) => a + b, 0) / volume.length / 100}
               />
             </div>
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-black animate-pulse" />
@@ -1789,7 +1420,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
           
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black text-white uppercase tracking-widest">DT Active</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-widest">Kern Active</span>
               <div className="w-1 h-1 rounded-full bg-slate-600" />
               <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Sync</span>
             </div>
@@ -1797,6 +1428,20 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
               {transcript.length > 0 ? transcript[transcript.length - 1].split(': ')[1] : 'Höre zu...'}
             </p>
           </div>
+
+          <button 
+            onClick={() => {
+              const newMuted = !isMuted;
+              setIsMuted(newMuted);
+              isMutedRef.current = newMuted;
+            }}
+            className={cn(
+              "p-2.5 rounded-xl transition-all border",
+              isMuted ? "bg-red-500/20 border-red-500/40 text-red-500" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+            )}
+          >
+            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
         </div>
       ) : (
         <>
@@ -1807,7 +1452,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
               <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">System Status</span>
             </div>
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-3.5">
-              {status === 'active' ? 'DT Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
+              {status === 'active' ? 'Kern Synchronisiert' : status === 'connecting' ? 'Initialisierung...' : 'Bereit für Analyse'}
             </span>
           </div>
 
@@ -1822,7 +1467,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
           <span className="text-[10px] font-mono text-primary/40">Stabil</span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">DT</span>
+          <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">Kern</span>
           <span className="text-[10px] font-mono text-primary/40">Aktiv</span>
         </div>
       </div>
@@ -1847,187 +1492,155 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
       <div className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col items-center sm:justify-center p-6 pt-24 pb-24 lg:pb-12">
         
         {/* Transcription Areas Group */}
-        {status === 'active' && (
-          <div className="absolute inset-0 pointer-events-none z-0 flex items-center lg:justify-between px-6 lg:px-12 xl:px-24">
-            {/* DT Transcription Area (Left - Blue) */}
-            <motion.div 
-              initial={{ opacity: 0, x: -50 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="hidden lg:flex w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-neon-cyan/20 rounded-xl p-6 backdrop-blur-md flex-col gap-4 relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan/50" />
-              <div className="flex items-center gap-2 mb-2">
-                <Brain className="w-4 h-4 text-neon-cyan" />
-                <span className="text-[10px] font-black text-neon-cyan uppercase tracking-widest">DT Analysis Live</span>
-              </div>
-              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
-                <AnimatePresence mode="popLayout">
-                  {dtTranscript.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className={cn(
-                        "text-xs sm:text-sm font-medium leading-relaxed",
-                        item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-cyan-50/70"
-                      )}
-                    >
-                      {item.text}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                {activeSpeaker === 'DT' && (
+        <div className="absolute inset-0 pointer-events-none z-0 hidden lg:flex items-center justify-between px-12 xl:px-24">
+          {/* Kern Transcription Area (Left - Blue) */}
+          <motion.div 
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-neon-cyan/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan/50" />
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-4 h-4 text-neon-cyan" />
+              <span className="text-[10px] font-black text-neon-cyan uppercase tracking-widest">Kern Analysis Live</span>
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
+              <AnimatePresence mode="popLayout">
+                {kernTranscript.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className={cn(
+                      "text-xs sm:text-sm font-medium leading-relaxed",
+                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-cyan-50/70"
+                    )}
+                  >
+                    {item.text}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {activeSpeaker === 'Kern' && (
+                <motion.div 
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                  className="w-1.5 h-1.5 rounded-full bg-neon-cyan"
+                />
+              )}
+            </div>
+          </motion.div>
+
+          {/* Scout Transcription Area (Right - Green) */}
+          <motion.div 
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-green-500/20 rounded-xl p-6 backdrop-blur-md flex flex-col gap-4 relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-1 h-full bg-green-500/50" />
+            <div className="flex items-center gap-2 mb-2 justify-end">
+              <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Scout Intel Live</span>
+              <Search className="w-4 h-4 text-green-500" />
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 text-right">
+              <AnimatePresence mode="popLayout">
+                {scoutTranscript.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className={cn(
+                      "text-xs sm:text-sm font-medium leading-relaxed",
+                      item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-green-50/70"
+                    )}
+                  >
+                    {item.text}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {activeSpeaker === 'Scout' && (
+                <div className="flex justify-end">
                   <motion.div 
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="w-1.5 h-1.5 rounded-full bg-neon-cyan"
+                    className="w-1.5 h-1.5 rounded-full bg-green-500"
                   />
-                )}
-              </div>
-            </motion.div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
 
-            {/* Researcher Transcription Area (Right - Green) */}
-            <motion.div 
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="hidden lg:flex w-full max-w-[300px] xl:max-w-[400px] h-3/5 bg-black/40 border border-green-500/20 rounded-xl p-6 backdrop-blur-md flex-col gap-4 relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-1 h-full bg-green-500/50" />
-              <div className="flex items-center gap-2 mb-2 justify-end">
-                <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Researcher Intel Live</span>
-                <Search className="w-4 h-4 text-green-500" />
-              </div>
-              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 text-right">
-                <AnimatePresence mode="popLayout">
-                  {researcherTranscript.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className={cn(
-                        "text-xs sm:text-sm font-medium leading-relaxed",
-                        item.text.startsWith('Du:') ? "text-slate-400 italic" : "text-green-50/70"
-                      )}
-                    >
-                      {item.text}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                {activeSpeaker === 'Researcher' && (
-                  <div className="flex justify-end">
-                    <motion.div 
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ repeat: Infinity, duration: 2 }}
-                      className="w-1.5 h-1.5 rounded-full bg-green-500"
-                    />
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        <div className="w-full max-w-2xl space-y-4 sm:space-y-8 text-center px-4 relative z-10">
-        <div className="flex flex-col items-center gap-6 sm:gap-12">
-          <div className="flex items-center gap-6 sm:gap-16">
-            {/* DT Avatar */}
+        <div className="w-full max-w-2xl space-y-6 sm:space-y-8 text-center px-4 relative z-10">
+        <div className="flex flex-col items-center gap-12">
+          <div className="flex items-center gap-4 sm:gap-16">
+            {/* Kern Avatar */}
             <motion.div 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col items-center gap-3 sm:gap-4"
+              className="flex flex-col items-center gap-4"
             >
               <div 
                 className={cn(
-                  "w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
-                  activeSpeaker === 'DT' 
+                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'Kern' 
                     ? "border-neon-cyan shadow-[0_0_30px_rgba(34,211,238,0.4)] scale-110" 
-                    : "border-white/5 opacity-40 shrink-0"
+                    : "border-white/5 opacity-40"
                 )}
               >
                 <Brain className={cn(
-                  "w-8 h-8 sm:w-10 sm:h-10 transition-colors",
-                  activeSpeaker === 'DT' ? "text-neon-cyan" : "text-white/20"
+                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
                 )} />
-                {activeSpeaker === 'DT' && (
+                {activeSpeaker === 'Kern' && (
                   <div className="absolute -inset-2 rounded-full border border-neon-cyan/30 animate-pulse" />
                 )}
               </div>
               <span className={cn(
-                "font-mono text-[9px] sm:text-xs tracking-widest transition-colors font-black",
-                activeSpeaker === 'DT' ? "text-neon-cyan" : "text-white/20"
-              )}>DT</span>
+                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
+                activeSpeaker === 'Kern' ? "text-neon-cyan" : "text-white/20"
+              )}>D.T. KERN</span>
             </motion.div>
 
             {/* Central Brain Visualizer */}
-            <div className="w-[140px] h-[140px] sm:w-[300px] sm:h-[300px] relative">
+            <div className="w-[180px] h-[180px] sm:w-[300px] sm:h-[300px] relative">
               <div className={cn(
-                "absolute inset-0 blur-[40px] sm:blur-[60px] rounded-full scale-75 animate-pulse transition-colors duration-1000",
-                activeSpeaker === 'Researcher' ? "bg-red-500/20" : "bg-neon-cyan/20"
+                "absolute inset-0 blur-[60px] rounded-full scale-75 animate-pulse transition-colors duration-1000",
+                activeSpeaker === 'Scout' ? "bg-red-500/20" : "bg-neon-cyan/20"
               )} />
-              <LiquidMetal 
-                isActive={status === 'active'} 
-                volume={volume.reduce((a, b) => a + b, 0) / volume.length / 100}
-              />
+              <LiquidMetal isActive={status === 'active'} />
             </div>
 
-            {/* Researcher Avatar */}
+            {/* Scout Avatar */}
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col items-center gap-3 sm:gap-4"
+              className="flex flex-col items-center gap-4"
             >
               <div 
                 className={cn(
-                  "w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
-                  activeSpeaker === 'Researcher' 
+                  "w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 transition-all duration-500 flex items-center justify-center bg-black/40 relative",
+                  activeSpeaker === 'Scout' 
                     ? "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)] scale-110" 
-                    : "border-white/5 opacity-40 shrink-0"
+                    : "border-white/5 opacity-40"
                 )}
               >
                 <Search className={cn(
-                  "w-8 h-8 sm:w-10 sm:h-10 transition-colors",
-                  activeSpeaker === 'Researcher' ? "text-red-500" : "text-white/20"
+                  "w-6 h-6 sm:w-10 sm:h-10 transition-colors",
+                  activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
                 )} />
-                {activeSpeaker === 'Researcher' && (
+                {activeSpeaker === 'Scout' && (
                   <div className="absolute -inset-2 rounded-full border border-red-500/30 animate-pulse" />
                 )}
               </div>
               <span className={cn(
-                "font-mono text-[9px] sm:text-xs tracking-widest transition-colors font-black",
-                activeSpeaker === 'Researcher' ? "text-red-500" : "text-white/20"
-              )}>RESEARCHER</span>
+                "font-mono text-[8px] sm:text-xs tracking-widest transition-colors",
+                activeSpeaker === 'Scout' ? "text-red-500" : "text-white/20"
+              )}>SCOUT AGENT</span>
             </motion.div>
-          </div>
-
-          {/* Mobile Transcription Summary */}
-          <div className="lg:hidden w-full max-w-sm mt-4">
-            <AnimatePresence mode="wait">
-              {activeSpeaker && (
-                <motion.div
-                  key={activeSpeaker}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className={cn(
-                    "p-4 rounded-2xl border backdrop-blur-md text-center",
-                    activeSpeaker === 'DT' ? "bg-neon-cyan/5 border-neon-cyan/20" : "bg-red-500/5 border-red-500/20"
-                  )}
-                >
-                  <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">
-                    {activeSpeaker === 'DT' ? 'DT analysiert...' : 'Researcher sucht...'}
-                  </p>
-                  <p className="text-xs font-bold text-white/90 leading-relaxed italic">
-                    "{activeSpeaker === 'DT' 
-                      ? (dtTranscript[dtTranscript.length - 1]?.text || '...') 
-                      : (researcherTranscript[researcherTranscript.length - 1]?.text || '...')}"
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
 
@@ -2182,7 +1795,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
               <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Initialisiere DT...</p>
+              <p className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Initialisiere Kern...</p>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Verbindung zum Digitalen Zwilling wird aufgebaut</p>
             </div>
             <button 
@@ -2216,81 +1829,12 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
               ))}
             </div>
 
-            {/* Screen Share Preview & OCR Overlay */}
-            <AnimatePresence>
-              {isScreenSharing && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="relative group bg-black/40 rounded-3xl overflow-hidden border border-white/5 aspect-video mx-auto max-w-lg mb-8"
-                >
-                  <video 
-                    ref={videoRef}
-                    autoPlay 
-                    muted 
-                    playsInline 
-                    className="w-full h-full object-contain"
-                    onMouseDown={handleOCRMouseDown}
-                    onMouseMove={handleOCRMouseMove}
-                    onMouseUp={handleOCRMouseUp}
-                  />
-                  
-                  {isOCRMode && (
-                    <div className="absolute inset-0 bg-blue-500/10 cursor-crosshair pointer-events-none">
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="bg-blue-600/90 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
-                          Text zum Vorlesen markieren
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Selection Rectangle visual */}
-                  {selection && (isOCRMode || isDraggingOCR) && (
-                    <div 
-                      className="absolute border-2 border-blue-400 bg-blue-400/20 rounded shadow-[0_0_15px_rgba(37,99,235,0.4)] pointer-events-none z-50"
-                      style={{
-                        left: selection.x,
-                        top: selection.y,
-                        width: selection.w,
-                        height: selection.h
-                      }}
-                    />
-                  )}
-
-                  <div className="absolute top-4 right-4 flex gap-2">
-                    <div className="px-3 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                      <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Live Desktop</span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <button 
-                onClick={startAnalysis}
-                className="bg-white/5 hover:bg-white/10 text-primary border border-primary/20 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
-              >
-                Wöchentliche Analyse starten
-              </button>
-              
-              <button 
-                onClick={() => setIsOCRMode(!isOCRMode)}
-                className={cn(
-                  "py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border flex items-center justify-center gap-2",
-                  isOCRMode 
-                    ? "bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-500/20" 
-                    : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
-                )}
-                disabled={!isScreenSharing}
-              >
-                {isOCRMode ? <MousePointer2 className="w-4 h-4" /> : <Highlighter className="w-4 h-4" />}
-                {isOCRMode ? "Markiermodus aktiv" : "Fast Reader"}
-              </button>
-            </div>
+            <button 
+              onClick={startAnalysis}
+              className="w-full bg-white/5 hover:bg-white/10 text-primary border border-primary/20 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
+            >
+              Wöchentliche Analyse starten
+            </button>
 
             <div className="flex items-center justify-center gap-4 sm:gap-6">
               <button 
@@ -2308,6 +1852,21 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                 title={isScreenSharing ? "Bildschirmfreigabe beenden" : "Bildschirm teilen"}
               >
                 {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
+              </button>
+              <button 
+                onClick={() => setShowRecallPanel(true)}
+                className={cn(
+                  "p-4 rounded-full border transition-all flex items-center justify-center relative",
+                  showRecallPanel ? "bg-amber-500/20 border-amber-500 text-amber-500" : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                )}
+                title="Recall Lesezeichen & Tasks synchronisieren"
+              >
+                <Bookmark className="w-6 h-6" />
+                {recallTasks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-black text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                    {recallTasks.length}
+                  </span>
+                )}
               </button>
               <button 
                 onClick={() => setShowHistory(true)}
@@ -2404,22 +1963,6 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                 </button>
               </motion.div>
             )}
-
-            {error && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] text-center"
-              >
-                {error}
-                <button 
-                  onClick={() => setError(null)}
-                  className="ml-2 underline hover:text-white transition-colors"
-                >
-                  OK
-                </button>
-              </motion.div>
-            )}
           </div>
         )}
 
@@ -2481,10 +2024,8 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
             <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-white/10">
               {processLogs
                 .filter(log => 
-                  log.category !== 'audio' && (
-                    log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) || 
-                    log.details?.toLowerCase().includes(logSearchQuery.toLowerCase())
-                  )
+                  log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) || 
+                  log.details?.toLowerCase().includes(logSearchQuery.toLowerCase())
                 )
                 .map((log) => (
                   <motion.div 
@@ -2511,10 +2052,10 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                         {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-[11px] font-bold mt-1.5 leading-relaxed">{renderWithLinks(log.message)}</p>
+                    <p className="text-[11px] font-bold mt-1.5 leading-relaxed">{log.message}</p>
                     {log.details && (
                       <p className="text-[9px] mt-1 opacity-60 font-mono break-all line-clamp-2 hover:line-clamp-none transition-all">
-                        {renderWithLinks(log.details)}
+                        {log.details}
                       </p>
                     )}
                   </motion.div>
@@ -2531,14 +2072,12 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
             <div className="p-4 border-t border-white/10 bg-white/[0.02] space-y-3">
               <div className="flex items-center justify-between px-1">
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Status Legende</span>
-                
-                <button 
-                  onClick={() => setShowAudioDetail(true)}
-                  className="flex items-center gap-2 px-2 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg group hover:bg-orange-500/20 transition-all"
-                >
-                  <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Unterbrechungen</span>
-                  <span className="text-[10px] font-mono font-black text-orange-400">x {audioInterruptionCount}</span>
-                </button>
+                {interruptionCount > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                    <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Unterbrechungen</span>
+                    <span className="text-[10px] font-mono font-black text-orange-400">x {interruptionCount}</span>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
@@ -2577,7 +2116,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-white uppercase tracking-tight">Gesprächsverlauf</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">DT Live Session</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">D.T. Kern Live Session</p>
                   </div>
                 </div>
                 <button 
@@ -2633,7 +2172,7 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[9px] font-black uppercase tracking-widest opacity-40">
-                          {log.sender === 'User' ? 'Nutzer' : log.sender === 'System' ? 'System Sync' : 'DT'}
+                          {log.sender === 'User' ? 'Nutzer' : log.sender === 'System' ? 'System Sync' : 'D.T. Kern'}
                         </span>
                         <span className="text-[8px] font-mono opacity-30">
                           {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2699,116 +2238,185 @@ Bitte fasse dieses Ergebnis jetzt für den Nutzer zusammen. Tritt in deiner zuge
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
 
-      {/* Audio Detailed Overlay */}
-      <AnimatePresence>
-        {showAudioDetail && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
-            onClick={() => setShowAudioDetail(false)}
+        {showRecallPanel && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="absolute inset-0 z-[110] bg-slate-950/95 backdrop-blur-2xl flex flex-col p-6 sm:p-10"
           >
-            <motion.div 
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl bg-slate-950 border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/[0.02]">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-orange-500/20 flex items-center justify-center border border-orange-500/30">
-                    <Volume2 className="w-5 h-5 text-orange-400" />
+            <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-xl">
+                    <Bookmark className="w-5 h-5 text-amber-500" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-black text-white uppercase tracking-tighter">Audio Protokoll</h2>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">System-Event Log & Streaming Stats</p>
+                    <h3 className="text-lg font-black text-white uppercase tracking-tight">Recall.it Integration</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Digitaler Zwilling Live Sync</p>
                   </div>
                 </div>
                 <button 
-                  onClick={() => setShowAudioDetail(false)}
-                  className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400"
+                  onClick={() => setShowRecallPanel(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-all"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-6 h-6" />
                 </button>
               </div>
 
-              <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
-                {processLogs.filter(l => l.category === 'audio').length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 opacity-20 text-white">
-                    <VolumeX className="w-12 h-12 mb-4" />
-                    <span className="text-xs font-black uppercase tracking-widest text-center">Keine Audio-Logs<br/>in dieser Session</span>
+              {/* API Connection Setup row */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 mb-6 flex flex-col md:flex-row items-center gap-4 justify-between">
+                <div className="flex-1 w-full">
+                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Recall API Private Key</label>
+                  <div className="relative">
+                    <input 
+                      type="password"
+                      value={recallApiKey}
+                      onChange={(e) => setRecallApiKey(e.target.value)}
+                      placeholder="sk_..."
+                      className="w-full bg-black/40 border border-white/15 rounded-xl px-4 py-2.5 text-xs text-slate-200 placeholder:text-slate-700 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50"
+                    />
                   </div>
-                ) : (
-                  processLogs.filter(l => l.category === 'audio').slice().reverse().map((log) => (
-                    <div 
-                      key={log.id} 
-                      className={cn(
-                        "p-4 rounded-2xl border transition-all",
-                        log.level === 'warning' 
-                        ? 'bg-orange-500/10 border-orange-500/20' 
-                        : 'bg-white/[0.03] border-white/10'
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg",
-                            log.level === 'warning' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
-                          )}>
-                            {log.message}
-                          </span>
-                          <span className="text-[9px] font-bold text-slate-600">
-                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </div>
-                        {log.level === 'warning' && (
-                          <div className="flex items-center gap-1.5 text-[9px] font-black text-orange-500 uppercase tracking-widest animate-pulse">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>Interrupt Detected</span>
+                </div>
+                <div className="flex gap-2 self-end w-full md:w-auto">
+                  <button
+                    onClick={handleSyncRecall}
+                    disabled={isRecallSyncing}
+                    className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 text-black rounded-xl font-bold text-[11px] uppercase tracking-wider hover:bg-amber-500/90 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {isRecallSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    {isRecallSyncing ? "Synchronisiere..." : "Jetzt Synchronisieren"}
+                  </button>
+                </div>
+              </div>
+
+              {recallError && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl mb-6 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{recallError}</span>
+                </div>
+              )}
+
+              {/* Grid or Two columns: Synced Bookmarks & Extracted Action Items */}
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-hidden">
+                {/* Column 1: Bookmarks Feed (5 cols) */}
+                <div className="lg:col-span-5 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bookmarks ({recallItems.length})</span>
+                    <span className="text-[8px] font-mono text-slate-600 uppercase">Recall.it Feed</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {recallItems.length > 0 ? (
+                      recallItems.map((item, index) => (
+                        <div key={index} className="p-3.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h4 className="text-xs font-bold text-slate-100 line-clamp-2 leading-snug">{item.title || "Unbenanntes Lesezeichen"}</h4>
+                            {item.url && (
+                              <a 
+                                href={item.url} 
+                                target="_blank" 
+                                rel="noreferrer noopener"
+                                className="p-1 bg-white/5 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      {log.details && (
-                        <div className="flex flex-wrap gap-4 pt-3 border-t border-white/5">
-                          {log.details.split('|').map((stat, i) => {
-                            const [label, val] = stat.split(':');
-                            return (
-                              <div key={i} className="flex flex-col">
-                                <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">{label.trim()}</span>
-                                <span className="text-xs font-mono font-bold text-white/80">{val.trim()}</span>
-                              </div>
-                            );
-                          })}
+                          {item.summary && (
+                            <p className="text-[10px] text-slate-500 line-clamp-3 leading-normal">{item.summary}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-[8px] font-mono bg-white/5 px-1.5 py-0.5 rounded text-slate-400 uppercase tracking-widest">
+                              {item.model || "Bookmarked"}
+                            </span>
+                            {item.category && (
+                              <span className="text-[8px] font-black bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-500 uppercase tracking-widest">
+                                {item.category}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="p-6 border-t border-white/10 flex items-center justify-between bg-white/[0.02]">
-                <div className="flex gap-10">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Total Errors</span>
-                    <span className="text-xl font-black text-orange-500 tracking-tighter">{audioInterruptionCount}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Activity Logs</span>
-                    <span className="text-xl font-black text-white tracking-tighter">{processLogs.filter(l => l.category === 'audio').length}</span>
+                      ))
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-600 py-12 border border-dashed border-white/5 rounded-2xl">
+                        <Bookmark className="w-8 h-8 opacity-10 mb-2" />
+                        <p className="text-[10px] font-bold uppercase tracking-widest">Keine Bookmarks geladen</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowAudioDetail(false)}
-                  className="px-8 py-3 bg-white text-black text-xs font-black uppercase rounded-2xl hover:bg-white/90 transition-all shadow-xl shadow-white/5"
-                >
-                  Fertig
-                </button>
+
+                {/* Column 2: Synthesized Action items (7 cols) */}
+                <div className="lg:col-span-7 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Extracted Blueprint Tasks ({recallTasks.length})</span>
+                    <span className="text-[8px] font-mono text-amber-500/50 uppercase">Prototyper & Strategie Engine</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {recallTasks.length > 0 ? (
+                      recallTasks.map((task, index) => (
+                        <div key={index} className="p-4 bg-white/[0.03] border border-amber-500/15 hover:border-amber-500/30 rounded-2xl transition-all flex flex-col gap-3 relative overflow-hidden group">
+                          {/* Glow background on hover */}
+                          <div className="absolute -inset-20 bg-amber-500/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                          
+                          <div className="relative">
+                            <div className="flex items-start justify-between gap-4 mb-2">
+                              <div>
+                                <span className={cn(
+                                  "text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest inline-block mb-1.5 mr-1.5",
+                                  task.priority === 'high' ? "bg-red-500/20 text-red-400" :
+                                  task.priority === 'medium' ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
+                                )}>
+                                  {task.priority || 'Medium'} Prio
+                                </span>
+                                <span className="text-[8px] font-black bg-white/5 px-1.5 py-0.5 rounded text-slate-400 uppercase tracking-widest">
+                                  {task.category || 'Idee'}
+                                </span>
+                                <h4 className="text-sm font-black text-white uppercase tracking-tight leading-snug">{task.task}</h4>
+                              </div>
+                              <button 
+                                onClick={() => handleSaveExtractedTask(task)}
+                                className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-500/90 text-black text-[9px] font-black rounded-lg uppercase tracking-wider transition-all hover:scale-[1.02] flex items-center gap-1.5"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Speichern
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-400 leading-relaxed mb-3">{task.description}</p>
+                            
+                            {/* Technical implementation mode section */}
+                            {task.executionMode && (
+                              <div className="bg-black/50 rounded-xl p-3 border border-white/5 text-left font-mono text-[10px] leading-relaxed">
+                                <div className="flex items-center justify-between border-b border-white/5 pb-1.5 mb-2">
+                                  <span className="text-[10px] text-amber-500 font-black uppercase tracking-widest">{task.executionMode} Mode</span>
+                                  <span className="text-[8px] text-slate-600">Extracted Blueprint</span>
+                                </div>
+                                <div className="text-slate-300 max-h-[120px] overflow-y-auto whitespace-pre-wrap no-scrollbar">
+                                  {task.modeOutput}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-600 py-12 border border-dashed border-white/5 rounded-2xl">
+                        <Database className="w-8 h-8 opacity-10 mb-2" />
+                        <p className="text-[10px] font-bold uppercase tracking-widest">Warte auf Synchronisation...</p>
+                        <p className="text-[9px] text-slate-500 text-center max-w-xs mt-1">Lade deine Bookmarks um KI-basierte Aufgaben & Implementierungskonzepte zu erstellen.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </motion.div>
+
+              {/* Footer text */}
+              <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-600 font-bold uppercase tracking-widest">
+                <span>Recall API Sync System v1.1</span>
+                <span>Press Sync to begin discussing with Kern & Researcher</span>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

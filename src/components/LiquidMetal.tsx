@@ -1,20 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ isActive, volume = 0 }) => {
+export const LiquidMetal: React.FC<{ isActive: boolean }> = ({ isActive }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const requestRef = useRef<number | null>(null);
-  const volumeRef = useRef(0);
 
-  useEffect(() => {
-    volumeRef.current = volume;
-  }, [volume]);
+    const mouseRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
 
-  const mouseRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
-
-  useEffect(() => {
-    if (!containerRef.current) return;
+    useEffect(() => {
+      if (!containerRef.current) return;
 
       const width = containerRef.current.clientWidth;
       const height = containerRef.current.clientHeight;
@@ -71,7 +66,6 @@ export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ 
         uniform float uTime;
         uniform vec2 uMouse;
         uniform float uMouseStrength;
-        uniform float uVolume;
 
         // Simplex 3D Noise
         vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
@@ -122,8 +116,8 @@ export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ 
 
         float getDisplacement(vec3 p) {
           // Lower frequency, higher amplitude for a "fused/blobby" look
-          float d = snoise(p * 0.5 + uTime * 0.2) * (0.6 + uVolume * 0.5);
-          d += snoise(p * 1.2 - uTime * 0.3) * (0.25 + uVolume * 0.3);
+          float d = snoise(p * 0.5 + uTime * 0.2) * 0.6;
+          d += snoise(p * 1.2 - uTime * 0.3) * 0.25;
           d += snoise(p * 2.5 + uTime * 0.4) * 0.1;
           
           // Add a "pulse" effect
@@ -177,7 +171,6 @@ export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ 
         uniform float uTime;
         uniform vec2 uMouse;
         uniform float uMouseStrength;
-        uniform float uVolume;
 
         // More complex environment approximation for "non-static" color
         vec3 getEnvColor(vec3 ray) {
@@ -260,8 +253,7 @@ export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ 
         uniforms: {
           uTime: { value: 0 },
           uMouse: { value: new THREE.Vector2(0, 0) },
-          uMouseStrength: { value: 0 },
-          uVolume: { value: 0 }
+          uMouseStrength: { value: 0 }
         }
       });
 
@@ -271,7 +263,6 @@ export const LiquidMetal: React.FC<{ isActive: boolean; volume?: number }> = ({ 
       const animate = (time: number) => {
         const t = time * 0.001;
         material.uniforms.uTime.value = t;
-        material.uniforms.uVolume.value = volumeRef.current;
         
         // Smooth mouse movement
         mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.05;

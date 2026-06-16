@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { SimulationNodeDatum, SimulationLinkDatum } from 'd3';
+
 export interface SurrealConfig {
   url: string;
   ns: string;
@@ -20,7 +22,7 @@ export interface Pillar {
 
 export interface LogEntry {
   id: string;
-  sender: 'User' | 'DT' | 'System' | 'DT (Strategie)';
+  sender: 'User' | 'D.T. Kern' | 'System' | 'D.T. Kern (Strategie)';
   text: string;
   isCode?: boolean;
   timestamp: number;
@@ -30,14 +32,13 @@ export interface AnalyzedItem {
   id: string;
   rawId?: string;
   text: string;
-  name?: string;
   score: number;
   pillarId: string;
   vaultId: 'ideen' | 'projekte' | 'ziele' | 'workflows' | 'erkenntnisse' | 'toolbox' | 'kunden' | 'academy';
   category: 'GAME CHANGER' | 'SOLID WORK' | 'NOISE';
   reasoning?: string;
   nextStep?: string;
-  status?: string;
+  status?: 'Offen' | 'In Arbeit' | 'Blockiert';
   duration?: string;
   blockedBy?: string;
   missionType?: 'Bauen' | 'Denken' | 'Planen' | 'Entscheiden' | 'Dokumentieren';
@@ -45,9 +46,6 @@ export interface AnalyzedItem {
   timestamp: number;
   sourceUrl?: string;
   isArchived?: boolean;
-  type?: string;
-  area?: string;
-  impact?: number;
 }
 
 export interface MissionPlan {
@@ -83,7 +81,7 @@ export interface DailyIntel {
   chronicle_log: string[];
   research_armada?: {
     analyst_findings: string;
-    researcher_research: string;
+    scout_research: string;
     architect_integration: string;
     reviewer_critique: string;
   };
@@ -142,4 +140,18 @@ export interface AgentGoal {
   text: string;
   status: 'Active' | 'Completed' | 'Failed';
   timestamp: number;
+}
+
+export interface MapNode extends SimulationNodeDatum {
+  id: string;
+  item: AnalyzedItem;
+  x?: number;
+  y?: number;
+}
+
+export interface MapLink extends SimulationLinkDatum<MapNode> {
+  source: string | MapNode;
+  target: string | MapNode;
+  strength: number;
+  type: string;
 }

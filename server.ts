@@ -3,8 +3,11 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
 import { Surreal, StringRecordId } from 'surrealdb';
+import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Custom YouTube Transcript Fetcher (Minimal implementation to avoid buggy library)
 async function fetchYoutubeTranscript(videoId: string) {
@@ -49,20 +52,8 @@ async function fetchYoutubeTranscript(videoId: string) {
   }
 }
 
-// Hermes Agent Configuration
-const HERMES_API_BASE_URL = process.env.HERMES_API_BASE_URL || 'http://76.13.151.81:8642/v1';
-const HERMES_API_KEY = process.env.HERMES_API_KEY || '';
-const HERMES_MODEL = process.env.HERMES_MODEL || 'hermes-agent';
-const HERMES_TIMEOUT_MS = parseInt(process.env.HERMES_TIMEOUT_MS || '60000');
-const HERMES_SESSION_PREFIX = process.env.HERMES_SESSION_PREFIX || 'dt_';
-
 async function startServer() {
   console.log('Starting D.T. Kern Server...');
-  console.log(`[Config] Hermes Target URL: ${HERMES_API_BASE_URL}`);
-  if (HERMES_API_BASE_URL.startsWith('http:')) {
-    console.warn('[Security] Hermes endpoint is using HTTP. Consider Reverse Proxy + HTTPS.');
-  }
-
   const app = express();
   const PORT = 3000;
 
@@ -98,76 +89,12 @@ async function startServer() {
   db = await connectSurreal();
 
   // API Routes
-  app.use(express.json());
-
-  // Generic SurrealDB Tools (Proxied through backend for D.T)
-  app.post('/api/surreal/query', async (req, res) => {
-    if (!db) return res.status(503).json({ success: false, error: 'Database not connected' });
-    const { query, vars } = req.body;
-    try {
-      const result = await (db as any).query(query, vars);
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error('[Surreal] Query error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/surreal/create', async (req, res) => {
-    if (!db) return res.status(503).json({ success: false, error: 'Database not connected' });
-    const { collection, data } = req.body;
-    try {
-      const result = await (db as any).create(collection, data);
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error('[Surreal] Create error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/surreal/update', async (req, res) => {
-    if (!db) return res.status(503).json({ success: false, error: 'Database not connected' });
-    const { recordId, data } = req.body;
-    try {
-      const rid = recordId.includes(':') ? new StringRecordId(recordId) : recordId;
-      const result = await (db as any).merge(rid, data);
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error('[Surreal] Update error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/surreal/delete', async (req, res) => {
-    if (!db) return res.status(503).json({ success: false, error: 'Database not connected' });
-    const { recordId } = req.body;
-    try {
-      const rid = recordId.includes(':') ? new StringRecordId(recordId) : recordId;
-      await (db as any).delete(rid);
-      res.json({ success: true, message: `Record ${recordId} deleted` });
-    } catch (err: any) {
-      console.error('[Surreal] Delete error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/surreal/select', async (req, res) => {
-    if (!db) return res.status(503).json({ success: false, error: 'Database not connected' });
-    const { thing } = req.body;
-    try {
-      const result = await (db as any).select(thing);
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error('[Surreal] Select error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
   app.get('/api/youtube/transcript', async (req, res) => {
-    const videoUrl = req.query.url as string;
+    const videoUrl = (req.query.url as string) || ''; const searchTitle = (req.query.title as string) || ''; const searchChannel = (req.query.channel as string) || '';
     console.log(`[API] Received transcript request for: ${videoUrl}`);
     
-    if (!videoUrl) {
-      return res.status(400).json({ error: 'Missing YouTube URL' });
+    if (!videoUrl && !searchTitle) {
+      return res.status(400).json({ error: 'Missing YouTube URL or title' });
     }
 
     // Extract Video ID
@@ -177,7 +104,7 @@ async function startServer() {
     if (match && match[2].length === 11) {
       videoId = match[2];
     } else {
-      videoId = videoUrl; // Fallback to raw string if it's just the ID
+      if (videoUrl && /^[a-zA-Z0-9_-]{11}$/.test(videoUrl)) { videoId = videoUrl; } else if (searchTitle) { try { const q = encodeURIComponent(`${searchTitle} ${searchChannel}`.trim()); const sr = await fetch(`https://www.youtube.com/results?search_query=${q}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept-Language': 'de,en' } }); const sh = await sr.text(); const vm = sh.match(/"videoId":"([a-zA-Z0-9_-]{11})"/); if (vm) { videoId = vm[1]; console.log(`[API] Resolved videoId ${videoId} from title search: ${searchTitle}`); } } catch (e) { console.error('[API] Title search failed:', e); } }
     }
 
     try {
@@ -205,7 +132,7 @@ async function startServer() {
         console.warn(`[API] Transcript fetch error for ${videoId}:`, errorMessage);
       }
       
-      // Fallback: Try to get metadata (Title/Description)
+      try { const HERMES_BASE = process.env.HERMES_API_BASE_URL || 'http://127.0.0.1:8642/v1'; const HERMES_KEY = process.env.HERMES_API_KEY || ''; console.log(`[API] Trying Hermes transcript fallback for ${videoId}`); const hRes = await fetch(`${HERMES_BASE}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(HERMES_KEY ? { 'Authorization': `Bearer ${HERMES_KEY}` } : {}) }, body: JSON.stringify({ model: 'hermes', messages: [{ role: 'user', content: `Besorge das vollständige Transkript dieses YouTube-Videos mit allen verfügbaren Methoden (Untertitel, Schatten-Quellen, eigene Whisper-Transkription). Antworte NUR mit dem reinen Transkript-Text. Video-ID: ${videoId}. URL: https://www.youtube.com/watch?v=${videoId}. Titel: ${searchTitle}. Kanal: ${searchChannel}` }], temperature: 0 }) }); if (hRes.ok) { const hData = await hRes.json(); const hText = (hData && hData.choices && hData.choices[0] && hData.choices[0].message && hData.choices[0].message.content || '').trim(); if (hText && hText.length > 40) { console.log(`[API] Hermes provided transcript for ${videoId}`); return res.json({ transcript: hText, parts: hText.split('. ').length, isMetadataOnly: false, videoId, source: 'hermes', success: true }); } } } catch (hermesErr) { console.error('[API] Hermes transcript fallback failed:', hermesErr); }
       try {
         const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
           headers: {
@@ -254,49 +181,6 @@ async function startServer() {
   // Hermes API Integration
   app.use(express.json()); // Ensure JSON body parsing is active
 
-  // Hermes Health Check Proxy
-  app.get('/api/hermes/health', async (req, res) => {
-    try {
-      const modelsUrl = `${HERMES_API_BASE_URL}/models`;
-      
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); 
-
-      const startTime = Date.now();
-      const response = await fetch(modelsUrl, { 
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(HERMES_API_KEY ? { 'Authorization': `Bearer ${HERMES_API_KEY}` } : {})
-        }
-      });
-
-      clearTimeout(timeout);
-      const durationMs = Date.now() - startTime;
-      
-      console.log(`[Hermes] GET ${modelsUrl} -> ${response.status} (${durationMs}ms)`);
-
-      if (!response.ok) {
-        return res.json({ 
-          online: false, 
-          status: response.status,
-          error: `HTTP ${response.status}: ${response.statusText}`,
-          url: HERMES_API_BASE_URL 
-        });
-      }
-
-      res.json({ 
-        online: true, 
-        status: response.status,
-        url: HERMES_API_BASE_URL 
-      });
-    } catch (e: any) {
-      console.error(`[Hermes] Health check failed for ${HERMES_API_BASE_URL}:`, e.message);
-      res.json({ online: false, error: e.message, url: HERMES_API_BASE_URL });
-    }
-  });
-
   app.post('/api/hermes/call', async (req, res) => {
     const { 
       userMessage, 
@@ -311,8 +195,10 @@ async function startServer() {
 
     console.log(`[Hermes] Received call for session ${sessionId}, user ${userId}`);
 
-    // Build the prompt for Hermes
-    const fullSessionId = `${HERMES_SESSION_PREFIX}${sessionId}`;
+    const HERMES_API_BASE_URL = process.env.HERMES_API_BASE_URL || 'http://127.0.0.1:8642/v1';
+    const HERMES_API_KEY = process.env.HERMES_API_KEY || '';
+
+    // Build the prompt for Hermes as requested by user
     const hermesPrompt = `Du bist Hermes, der Backend-Operator von D.T.
 Der Nutzer spricht gerade mit D.T. über Gemini Live.
 Bearbeite die Anfrage als ausführender Agent nur dann mit Tools und Workflows, wenn es nötig ist.
@@ -334,137 +220,331 @@ ${userMessage}
 Bitte liefere eine klare finale Antwort für den Nutzer zurück.`;
 
     const startTime = Date.now();
-    const chatUrl = `${HERMES_API_BASE_URL}/chat/completions`;
     try {
-      console.log(`[Hermes] POST ${chatUrl} (Streaming) -> (waiting)`);
-      
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), HERMES_TIMEOUT_MS);
-
-      const response = await fetch(chatUrl, {
+      const response = await fetch(`${HERMES_API_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Hermes-Session-Id': fullSessionId,
+          'X-Hermes-Session-Id': sessionId,
           ...(HERMES_API_KEY ? { 'Authorization': `Bearer ${HERMES_API_KEY}` } : {})
         },
-        signal: controller.signal,
         body: JSON.stringify({
-          model: HERMES_MODEL, 
+          model: 'hermes', // Or appropriate model name
           messages: [
             { role: 'user', content: hermesPrompt }
           ],
-          temperature: 0.7,
-          stream: true
+          temperature: 0.7
         })
       });
-
-      clearTimeout(timeout);
-
-      // Handle 4xx Errors - Do NOT fallback for client/auth errors
-      if (response.status >= 400 && response.status < 500) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error(`[Hermes] Client Error ${response.status}:`, errorData);
-        return res.status(response.status).json({
-          success: false,
-          error: `Hermes hat die Anfrage abgelehnt (Fehler ${response.status}).`,
-          details: errorData.error || response.statusText
-        });
-      }
 
       if (!response.ok) {
         throw new Error(`Hermes API error: ${response.status} ${response.statusText}`);
       }
 
-      // Set headers for SSE
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      const data = await response.json();
+      const hermesResponse = data.choices?.[0]?.message?.content || 'Keine Antwort von Hermes erhalten.';
+      const durationMs = Date.now() - startTime;
 
-      if (!response.body) throw new Error("No response body from Hermes");
+      console.log(`[Hermes] Success (${durationMs}ms)`);
+
+      // Log to SurrealDB
+      if (db) {
+        try {
+          const logId = `logs:${Math.random().toString(36).substring(7)}`;
+          await (db as any).create(new StringRecordId(logId), {
+            timestamp: Date.now(),
+            userId,
+            sessionId,
+            toolName: 'callHermes',
+            originalUserMessage: userMessage,
+            hermesPrompt,
+            hermesResponse,
+            status: 'success',
+            durationMs
+          });
+        } catch (logErr) {
+          console.error('[Surreal] Logging Hermes call failed:', logErr);
+        }
+      }
       
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = "";
+      res.json({ 
+        success: true, 
+        response: hermesResponse,
+        durationMs
+      });
+    } catch (error: any) {
+      console.error('[Hermes] Error:', error);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value, { stream: true });
-        res.write(chunk);
-
-        // Optional: Extract content for logging later if needed
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-            try {
-              const json = JSON.parse(line.slice(6));
-              fullContent += json.choices?.[0]?.delta?.content || "";
-            } catch (e) {}
-          }
+      // Log error to SurrealDB
+      if (db) {
+        try {
+          const logId = `logs:${Math.random().toString(36).substring(7)}`;
+          await (db as any).create(new StringRecordId(logId), {
+            timestamp: Date.now(),
+            userId,
+            sessionId,
+            toolName: 'callHermes',
+            originalUserMessage: userMessage,
+            hermesPrompt,
+            status: 'error',
+            error: error.message
+          });
+        } catch (logErr) {
+          console.error('[Surreal] Logging Hermes error failed:', logErr);
         }
       }
 
-      res.end();
-      const durationMs = Date.now() - startTime;
-      console.log(`[Hermes] Stream finished (${durationMs}ms)`);
-
-      // Log to SurrealDB (Async, don't wait for it to finish the request)
-      logAndSendHermesResponse(null, db, { 
-        userId, 
-        sessionId, 
-        userMessage, 
-        hermesPrompt, 
-        hermesResponse: fullContent, 
-        durationMs,
-        isAsyncLog: true 
-      });
-
-    } catch (error: any) {
-      console.error(`[Hermes] Connection failed: ${error.message}`);
-      
       res.status(500).json({ 
         success: false, 
-        error: 'Hermes ist aktuell nicht erreichbar.',
+        error: 'Ich kann die externe Operator-Funktion gerade nicht erreichen. Versuch es bitte gleich nochmal.',
         details: error.message
       });
     }
   });
 
-  async function logAndSendHermesResponse(res: any, db: any, params: any) {
-    const { userId, sessionId, userMessage, hermesPrompt, hermesResponse, durationMs, isFallback = false, isAsyncLog = false } = params;
-    
-    if (db) {
-      try {
-        const logId = `logs:${Math.random().toString(36).substring(7)}`;
-        await (db as any).create(new StringRecordId(logId), {
-          timestamp: Date.now(),
-          userId,
-          sessionId,
-          toolName: 'callHermes',
-          originalUserMessage: userMessage,
-          hermesPrompt,
-          hermesResponse,
-          status: 'success',
-          durationMs,
-          isFallback
+  // API endpoint to fetch and parse Recall items
+  app.post("/api/recall/sync", async (req, res) => {
+    try {
+      const { recallApiKey, customItems, dateFrom, dateTo } = req.body;
+      let items = [];
+      let methodUsed = "real_api";
+
+      const cleanKey = (key?: string) => key ? key.trim() : "";
+      const activeKey = cleanKey(recallApiKey) || process.env.RECALL_API_KEY || "sk_3c99fb6d4f5f05729f94d9f98377ed24";
+
+      // If customItems are provided, use them directly (scratchpad mode)
+      if (customItems && Array.isArray(customItems) && customItems.length > 0) {
+        items = customItems;
+        methodUsed = "custom";
+      } else if (!activeKey || activeKey === "" || activeKey.toLowerCase() === "demo") {
+        return res.status(400).json({
+          error: "Ein gueltiger Recall API Token ist erforderlich. Bitte gib deinen echten API Token in den Einstellungen ein."
         });
-      } catch (logErr) {
-        console.error('[Surreal] Logging Hermes call failed:', logErr);
+      } else {
+        const apiKey = activeKey;
+        try {
+          // Construct query parameters for Recall API
+          let recallUrl = "https://backend.getrecall.ai/api/v1/cards";
+          const queryParams = new URLSearchParams();
+
+          if (dateFrom) {
+            const fromDate = new Date(dateFrom);
+            if (!isNaN(fromDate.getTime())) {
+              queryParams.append("date_from", fromDate.toISOString().split("T")[0] + "T00:00:00Z");
+            }
+          }
+          if (dateTo) {
+            const toDate = new Date(dateTo);
+            if (!isNaN(toDate.getTime())) {
+              queryParams.append("date_to", toDate.toISOString().split("T")[0] + "T23:59:59Z");
+            }
+          }
+
+          const queryString = queryParams.toString();
+          if (queryString) {
+            recallUrl += `?${queryString}`;
+          }
+
+          console.log(`Fetching cards from Recall API: ${recallUrl}`);
+
+          // Fetch list of cards using the exact specified URL and authorization scheme
+          const response = await fetch(recallUrl, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Accept": "application/json"
+            }
+          });
+
+          if (response.ok) {
+            const listData = await response.json() as any;
+            const cardList = listData.results || [];
+            
+            if (Array.isArray(cardList) && cardList.length > 0) {
+              // Retrieve detailed content chunks for the first 5 cards to ensure deep synthesis by Gemini
+              const cardPromises = cardList.slice(0, 5).map(async (card: any) => {
+                try {
+                  const cardDetailsResponse = await fetch(`https://backend.getrecall.ai/api/v1/cards/${card.id}`, {
+                    method: "GET",
+                    headers: {
+                      "Authorization": `Bearer ${apiKey}`,
+                      "Accept": "application/json"
+                    }
+                  });
+                  
+                  if (cardDetailsResponse.ok) {
+                    const cardDetails = await cardDetailsResponse.json() as any;
+                    const combinedContent = (cardDetails.chunks || [])
+                      .map((ck: any) => ck.content || "")
+                      .filter((txt: string) => txt.trim() !== "")
+                      .join("\n");
+                    
+                    // Extract raw tags securely
+                    const rawTags = cardDetails.tags || card.tags || [];
+                    const tagsList = Array.isArray(rawTags)
+                      ? rawTags.map((t: any) => {
+                          if (typeof t === 'string') return t;
+                          if (t && typeof t === 'object' && t.name) return t.name;
+                          if (t && typeof t === 'object' && t.title) return t.title;
+                          return "";
+                        }).filter((t: string) => t.trim() !== "")
+                      : [];
+                    
+                    return {
+                      id: card.id,
+                      title: card.title || "Untitled Card",
+                      url: card.source_url || "",
+                      summary: combinedContent || "No detailed content chunks loaded.",
+                      created_at: cardDetails.created_at || card.created_at || new Date().toISOString(),
+                      tags: tagsList
+                    };
+                  }
+                } catch (detailErr) {
+                  console.error(`Failed to load chunks for card ${card.id}:`, detailErr);
+                }
+                // Fallback to basic card info if chunks request failed
+                const rawCardTags = card.tags || [];
+                const fallbackTags = Array.isArray(rawCardTags)
+                  ? rawCardTags.map((t: any) => {
+                      if (typeof t === 'string') return t;
+                      if (t && typeof t === 'object' && t.name) return t.name;
+                      if (t && typeof t === 'object' && t.title) return t.title;
+                      return "";
+                    }).filter((t: string) => t.trim() !== "")
+                  : [];
+
+                return {
+                  id: card.id,
+                  title: card.title || "Untitled Card",
+                  url: card.source_url || "",
+                  summary: "Could not retrieve detailed chunks from API.",
+                  created_at: card.created_at || new Date().toISOString(),
+                  tags: fallbackTags
+                };
+              });
+              
+              items = await Promise.all(cardPromises);
+              methodUsed = "real_api";
+            } else {
+              console.warn("Recall.it API returned zero cards.");
+              items = [];
+              methodUsed = "real_api_empty";
+            }
+          } else {
+            const errData = await response.json().catch(() => ({})) as any;
+            const errMsg = errData.detail?.message || `Recall.it API returned status code ${response.status}`;
+            throw new Error(errMsg);
+          }
+        } catch (err: any) {
+          console.error(`Recall.it API integration error: ${err.message}.`);
+          return res.status(401).json({
+            error: `Recall API Integration Error: ${err.message}. Please double check that your private token is correct.`
+          });
+        }
       }
-    }
-    
-    if (res && !isAsyncLog) {
-      res.json({ 
-        success: true, 
-        response: hermesResponse,
-        durationMs,
-        isFallback
+
+      // Guard: if we somehow have no items, return empty list
+      if (items.length === 0) {
+        return res.json({
+          itemsSyncedCount: 0,
+          todosExtractedCount: 0,
+          items: [],
+          extractedTodos: [],
+          methodUsed
+        });
+      }
+
+      // Now, run the items through Gemini model to extract structured actionable todos
+      const contents = `Analyze the following bookmarks and content summaries saved by a user.
+For each item, identify if there are any immediate/logical tasks, further research topics, action steps, or watch/read checklist items.
+Each item in the list might contain 'tags' representing user tags in their Recall account.
+
+You MUST prioritize setting the 'category' of each extracted task to one of the actual tags of the bookmark.
+If multiple tags exist, you must prioritize functional tags in this exact order:
+1. "New Tool"
+2. "Anwendungsfälle"
+3. "Claude"
+4. "Hermes"
+
+If none of those priority tags are present but the bookmark has other tags, select the most relevant tag from its 'tags' list as the 'category'.
+If the bookmark has absolutely no tags, analyze its contents: if it introduces or explains a new tool, service, or software library, use the category "New Tool". If it outlines practical applications or use cases, use the category "Anwendungsfälle". For conversations or models related to Claude, use "Claude". For Hermes or specialized reasoning models, use "Hermes". Otherwise, dynamically assign a concise and meaningful category name based on the content themes, keeping it capitalized.
+
+AUTOMATED ACTION MODE (YOUR CORE ASSIGNMENT):
+You must dynamically analyze the content template and choose the best suited Execution Mode ('executionMode') for the user:
+- "Architect": Best for items that explain how a system works, how to configure or set up a tool, systematic tutorials, or architectural plans.
+- "Rapid Prototyper": Best for items containing code, logic, APIs, boilerplates, schema files, or actionable programming snippets.
+- "Strategist": Best for conceptual ideas, market opportunities, product strategies, monetization tactics, or creative brainstorms.
+
+Based on the chosen Mode, you MUST provide a detailed markdown string in 'modeOutput':
+- For Architect: Provide a high-fidelity Markdown structural Blueprint (Draft/Blueprint) followed by Step-by-Step implementation instructions.
+- For Rapid Prototyper: Provide fully written, copy-ready Code Boilerplates (e.g., Python, Javascript/TS, or JSON configs) and short instructions on how to run them.
+- For Strategist: Provide a comprehensive SWOT or market overview, 3+ extremely unique and targeted business Use Cases, and a specific risk-mitigation tip.
+
+Structure each extracted task into a structured object containing:
+- task (Short title of the task)
+- description (Action guidelines, learning steps, or helpful context)
+- priority (low, medium, or high)
+- category (The selected key category tag name as described above)
+- tags (The complete array of tags for this bookmark card)
+- executionMode ("Architect", "Rapid Prototyper", or "Strategist")
+- modeOutput (High-value markdown content containing code snippets, schemas, or blueprints ready for immediate action)
+- sourceTitle (Title of the source bookmark)
+- sourceUrl (The source link)
+
+Only extract tasks that directly or logically arise from the saved summaries (or can be helpful next steps to follow up on the bookmark).
+
+Here are the saved bookmarks (including their tags and summaries):
+${JSON.stringify(items, null, 2)}`;
+
+      const modelResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents,
+        config: {
+          systemInstruction: "You are an expert action-item extractor and cognitive productivity companion. Your purpose is to turn casual bookmarks, youtube summaries, and pdf highlights from Recall.it into extremely structured, neat, prioritized board task items categorized by user tags.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                task: { type: Type.STRING, description: "Short title of the task" },
+                description: { type: Type.STRING, description: "Practical instructions, guidelines, list of concepts, or context from the source content" },
+                priority: { type: Type.STRING, enum: ["low", "medium", "high"], description: "The priority of the task" },
+                category: { type: Type.STRING, description: "Key tag name selected from the card's real tags, prioritizing 'New Tool', 'Anwendungsfälle', 'Claude', or 'Hermes'." },
+                tags: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "The complete list of tags present on this bookmark."
+                },
+                executionMode: { type: Type.STRING, enum: ["Architect", "Rapid Prototyper", "Strategist"], description: "The dynamically determined execution mode best suited for this task content." },
+                modeOutput: { type: Type.STRING, description: "Detailed Markdown content. Code snippets for Rapid Prototyper, Blueprints & Steps for Architect, Use cases & Market analysis for Strategist." },
+                sourceTitle: { type: Type.STRING, description: "The exact 'title' value of the source bookmark item in the JSON" },
+                sourceUrl: { type: Type.STRING, description: "The exact 'url' value of the source bookmark item in the JSON" }
+              },
+              required: ["task", "priority", "category", "tags", "executionMode", "modeOutput", "sourceTitle", "sourceUrl"]
+            }
+          }
+        }
+      });
+
+      const textOutput = modelResponse.text || "[]";
+      const extractedTodos = JSON.parse(textOutput);
+
+      return res.json({
+        itemsSyncedCount: items.length,
+        todosExtractedCount: extractedTodos.length,
+        items,
+        extractedTodos,
+        methodUsed
+      });
+
+    } catch (error: any) {
+      console.error("Recall Sync Error: ", error);
+      res.status(500).json({
+        error: error.message || "An error occurred during Recall.it synchronization"
       });
     }
-  }
-
+  });
 
   // Vite middleware for development
   try {
